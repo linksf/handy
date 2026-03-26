@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "./hooks/useAuth";
 import { useMobile } from "./hooks/useMobile";
+import SignInScreen from "./components/SignInScreen";
 import NavIcon from "./components/ui/NavIcon";
 import Dashboard from "./components/Dashboard";
 import Customers from "./components/Customers";
@@ -24,6 +26,7 @@ import {
 } from "firebase/firestore";
 
 export default function App() {
+  const { user, loading: authLoading, signInWithGoogle, signOut, authNotice } = useAuth();
   const isMobile = useMobile();
   const [customers, setCustomers] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -33,30 +36,34 @@ export default function App() {
   const [viewParam, setViewParam] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Real-time listeners
+  // Real-time listeners (only while signed in — matches Firestore rules)
   useEffect(() => {
+    if (!user) return;
     return onSnapshot(collection(db, "customers"), (snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     return onSnapshot(collection(db, "jobs"), (snap) => {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     return onSnapshot(collection(db, "tools"), (snap) => {
       setTools(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) return;
     return onSnapshot(collection(db, "tasks"), (snap) => {
       setTaskDefs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-  }, []);
+  }, [user]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -209,11 +216,34 @@ export default function App() {
     ["tools", "Tools"],
   ];
 
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#ecf0f1",
+          fontFamily: "'Futura', 'Trebuchet MS', 'Century Gothic', sans-serif",
+          color: "#232323",
+          fontSize: 15,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <SignInScreen onSignIn={signInWithGoogle} notice={authNotice} />;
+  }
+
   return (
     <div style={{ fontFamily: "'Futura', 'Trebuchet MS', 'Century Gothic', sans-serif", minHeight: "100vh", background: "#ecf0f1", color: "#232323" }}>
-      <nav style={{ background: "#232323", color: "#ecf0f1", padding: "0 12px", display: "flex", alignItems: "center" }}>
+      <nav style={{ background: "#232323", color: "#ecf0f1", padding: "0 12px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 17, marginRight: 8, cursor: "pointer", padding: "14px 8px", whiteSpace: "nowrap", color: "#ecf0f1", flexShrink: 0 }} onClick={() => nav("dashboard")}>Omnificology</span>
-        <div style={{ display: "flex", flexShrink: 0 }}>
+        <div style={{ display: "flex", flexShrink: 0, flex: 1, minWidth: 0 }}>
           {navItems.map(([v, l]) => {
             const active = view === v;
             return (
@@ -222,6 +252,29 @@ export default function App() {
               </button>
             );
           })}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto", padding: "8px 0" }}>
+          {!isMobile && (
+            <span style={{ fontSize: 12, color: "#bdc3c7", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }} title={user.email || ""}>
+              {user.displayName || user.email || "Signed in"}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => signOut()}
+            style={{
+              background: "transparent",
+              border: "1px solid #7f8c8d",
+              color: "#ecf0f1",
+              padding: "6px 12px",
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Sign out
+          </button>
         </div>
       </nav>
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: isMobile ? "16px 12px" : "24px 16px" }}>

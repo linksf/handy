@@ -1,3 +1,6 @@
+/** Only this Google account may use the app (compare lowercase in code). */
+export const ALLOWED_GOOGLE_EMAIL = "omnificology@gmail.com";
+
 export const STATUSES = ["Scheduled", "In Progress", "Complete", "Cancelled"];
 export const PAY_STATUSES = ["Unpaid", "Partial", "Paid"];
 
