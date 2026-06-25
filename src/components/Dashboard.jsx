@@ -1,20 +1,82 @@
 import Card from "./ui/Card";
 import Badge from "./ui/Badge";
+import Btn from "./ui/Btn";
 import { statusColor } from "../constants";
 
+function formatTs(ts) {
+  if (!ts?.toDate) return "—";
+  return ts.toDate().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 export default function Dashboard({ ctx }) {
-  const { upcomingJobs, totalRevenue, totalCost, data, nav, getCustomer, jobRevenue } = ctx;
+  const {
+    upcomingJobs,
+    totalRevenue,
+    totalCost,
+    data,
+    nav,
+    getCustomer,
+    jobRevenue,
+    pendingBookingCount,
+    pendingBookings,
+  } = ctx;
   const totalProfit = totalRevenue - totalCost;
   return (
     <div>
       <h2 style={{ marginTop: 0, color: "#232323", fontWeight: 700 }}>Dashboard</h2>
+
+      {pendingBookingCount > 0 && (
+        <div role="button" tabIndex={0} onClick={() => nav("scheduling")} onKeyDown={(e) => e.key === "Enter" && nav("scheduling")} style={{ cursor: "pointer" }}>
+        <Card
+          style={{
+            marginBottom: 20,
+            background: "#fffef5",
+            border: "2px solid #f9bf3b",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "#232323" }}>
+                {pendingBookingCount} pending booking{pendingBookingCount === 1 ? "" : "s"}
+              </div>
+              <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
+                Review and approve client requests on the Schedule page.
+              </div>
+            </div>
+            <Btn onClick={(e) => { e.stopPropagation(); nav("scheduling"); }}>Review</Btn>
+          </div>
+          {pendingBookings.slice(0, 3).map((r) => (
+            <div
+              key={r.id}
+              style={{
+                marginTop: 12,
+                paddingTop: 12,
+                borderTop: "1px solid #f0e6c8",
+                fontSize: 13,
+                color: "#555",
+              }}
+            >
+              <strong style={{ color: "#232323" }}>{r.title}</strong>
+              {" · "}
+              {formatTs(r.requestedStart)}
+            </div>
+          ))}
+          {pendingBookingCount > 3 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#7f8c8d" }}>
+              +{pendingBookingCount - 3} more
+            </div>
+          )}
+        </Card>
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16, marginBottom: 24 }}>
         {[
-          ["💰 Revenue",   `$${totalRevenue.toFixed(2)}`, "#d5f5e3", "#27ae60"],
-          ["🔧 Costs",     `$${totalCost.toFixed(2)}`,   "#fadbd8", "#c0392b"],
-          ["📈 Profit",    `$${totalProfit.toFixed(2)}`,  totalProfit >= 0 ? "#d5f5e3" : "#fadbd8", totalProfit >= 0 ? "#27ae60" : "#c0392b"],
-          ["👥 Customers", data.customers.length,          "#d6eaf8", "#2980b9"],
-          ["📋 Total Jobs",data.jobs.length,               "#f2f3f4", "#232323"],
+          ["Revenue", `$${totalRevenue.toFixed(2)}`, "#d5f5e3", "#27ae60"],
+          ["Costs", `$${totalCost.toFixed(2)}`, "#fadbd8", "#c0392b"],
+          ["Profit", `$${totalProfit.toFixed(2)}`, totalProfit >= 0 ? "#d5f5e3" : "#fadbd8", totalProfit >= 0 ? "#27ae60" : "#c0392b"],
+          ["Customers", data.customers.length, "#d6eaf8", "#2980b9"],
+          ["Total Jobs", data.jobs.length, "#f2f3f4", "#232323"],
         ].map(([l, v, bg, tc]) => (
           <Card key={l} style={{ background: bg, textAlign: "center", border: "none" }}>
             <div style={{ fontSize: 13, color: tc, fontWeight: 600, letterSpacing: "0.02em" }}>{l}</div>
@@ -29,6 +91,7 @@ export default function Dashboard({ ctx }) {
         ) : (
           upcomingJobs.map(j => {
             const c = getCustomer(j.customerId);
+            const st = statusColor[j.status] || { bg: "#ecf0f1", tc: "#232323" };
             return (
               <div
                 key={j.id}
@@ -41,7 +104,7 @@ export default function Dashboard({ ctx }) {
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ fontWeight: 600 }}>${jobRevenue(j).toFixed(2)}</span>
-                  <Badge text={j.status} {...statusColor[j.status]} />
+                  <Badge text={j.status} color={st.bg} textColor={st.tc} />
                 </div>
               </div>
             );

@@ -3,16 +3,18 @@ import Card from "./ui/Card";
 import Btn from "./ui/Btn";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
+import TaskMultiPicker from "./ui/TaskMultiPicker";
 import { STATUSES } from "../constants";
 import { useMobile } from "../hooks/useMobile";
 
 export default function NewJob({ ctx }) {
-  const { data, addJob, nav, viewParam } = ctx;
+  const { data, addJob, nav, viewParam, taskDefs } = ctx;
   const isMobile = useMobile();
   const [form, setForm] = useState({
     title: "", customerId: viewParam?.customerId || "", date: "",
     status: "Scheduled", price: "", hourlyRate: "", hours: "", notes: "",
   });
+  const [jobTasks, setJobTasks] = useState([]);
   const f = (k) => (v) => setForm(x => ({ ...x, [k]: v }));
 
   const previewRevenue =
@@ -55,8 +57,16 @@ export default function NewJob({ ctx }) {
             style={{ width: "100%", boxSizing: "border-box", border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14 }}
           />
         </div>
+
+        <TaskMultiPicker
+          label="Tasks (optional)"
+          options={taskDefs}
+          value={jobTasks}
+          onChange={setJobTasks}
+          hint="Search and add tasks from your library. You can add or remove more later on the job."
+        />
         <div style={{ display: "flex", gap: 10 }}>
-          <Btn onClick={() => { if (!form.title.trim() || !form.customerId) return; addJob(form); }}>Create Job</Btn>
+          <Btn onClick={() => { if (!form.title.trim() || !form.customerId) return; addJob({ ...form, tasks: jobTasks }); }}>Create Job</Btn>
           <Btn color="#7f8c8d" onClick={() => nav("jobs")}>Cancel</Btn>
         </div>
       </Card>

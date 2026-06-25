@@ -8,12 +8,19 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy --only hosting",
-    "deploy:hosting": "npm run deploy"
+    "deploy:hosting": "npm run deploy",
+    "set-owner-claim": "node scripts/setOwnerClaim.mjs",
+    "seed-handyman-tasks": "node scripts/seedHandymanTasks.mjs",
+    "invoice-api": "node server/invoiceApi.mjs"
   },
   "dependencies": {
     "firebase": "^11.0.0",
+    "firebase-admin": "^13.0.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "square": "^43.2.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",

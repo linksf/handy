@@ -59,7 +59,7 @@ export default function TasksManager({ ctx }) {
               <div style={{ marginTop: 12, borderTop: "1px solid #ecf0f1", paddingTop: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#7f8c8d" }}>Assign Tools</div>
                 {tools.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "#a0aec0" }}>No tools in library yet.</p>
+                  <p style={{ fontSize: 13, color: "#a0aec0" }}>No tools in library yet. Add tools under the Tools tab first.</p>
                 ) : (
                   tools.sort((a, b) => a.name.localeCompare(b.name)).map(tool => (
                     <label key={tool.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", cursor: "pointer", fontSize: 14 }}>
@@ -78,7 +78,16 @@ export default function TasksManager({ ctx }) {
           </Card>
         ))
       )}
-      {confirm && <ConfirmModal message={confirm.message} onConfirm={() => { confirm.onConfirm(); setConfirm(null); }} onCancel={() => setConfirm(null)} />}
+      {confirm && (
+        <ConfirmModal
+          message={confirm.message}
+          onConfirm={() => {
+            confirm.onConfirm();
+            setConfirm(null);
+          }}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 {
-  "name": "Omnificology",
-  "short_name": "Omnificology",
+  "name": "Handy",
+  "short_name": "Handy",
   "description": "Manage jobs, customers, and tasks from your home screen.",
   "start_url": "/",
   "scope": "/",

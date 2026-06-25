@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function SignInScreen({ onSignIn, notice }) {
+export default function SignInScreen({ onSignIn, notice, blockedFirebaseUser, onSignOut }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -11,9 +11,16 @@ export default function SignInScreen({ onSignIn, notice }) {
       await onSignIn();
     } catch (e) {
       setError(e?.message || "Sign-in failed. Try again.");
+    } finally {
       setBusy(false);
     }
   };
+
+  const blockedLabel =
+    blockedFirebaseUser?.email ||
+    blockedFirebaseUser?.displayName ||
+    blockedFirebaseUser?.uid ||
+    "";
 
   return (
     <div
@@ -39,11 +46,72 @@ export default function SignInScreen({ onSignIn, notice }) {
         }}
       >
         <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700, color: "#232323" }}>
-          Omnificology
+          Handy — Admin
         </h1>
         <p style={{ margin: "0 0 28px", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
-          Sign in with the Omnificology@gmail.com Google account. Your session stays on this device until you sign out.
+          Sign in with Google to continue. Your session stays on this device until you sign out. Clients request visits on the{" "}
+          <a href="/" style={{ color: "#2980b9", fontWeight: 600 }}>
+            home page
+          </a>
+          .
         </p>
+        {blockedFirebaseUser && (
+          <div
+            style={{
+              margin: "0 0 20px",
+              padding: "14px 16px",
+              borderRadius: 8,
+              background: "#ebf5fb",
+              border: "1px solid #85c1e9",
+              textAlign: "left",
+            }}
+          >
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "#232323", fontWeight: 600 }}>
+              You are signed in{blockedLabel ? ` as ${blockedLabel}` : ""}, but this account does not have admin access.
+            </p>
+            <p style={{ margin: "0 0 12px", fontSize: 13, color: "#555", lineHeight: 1.45 }}>
+              To request a visit, go to the home page. If you need admin access, sign in with your admin account.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <a
+                href="/"
+                style={{
+                  display: "block",
+                  textAlign: "center",
+                  padding: "12px 16px",
+                  borderRadius: 8,
+                  background: "#f9bf3b",
+                  color: "#232323",
+                  fontWeight: 600,
+                  fontSize: 14,
+                  textDecoration: "none",
+                  fontFamily: "inherit",
+                }}
+              >
+                Book a visit
+              </a>
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={() => onSignOut()}
+                  style={{
+                    width: "100%",
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "1px solid #bdc3c7",
+                    background: "#fff",
+                    color: "#232323",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Sign out
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         {notice && (
           <p style={{ margin: "0 0 16px", fontSize: 13, color: "#c0392b", lineHeight: 1.45 }} role="alert">
             {notice}

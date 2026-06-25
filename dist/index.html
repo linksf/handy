@@ -7,11 +7,11 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Omnificology" />
+    <meta name="apple-mobile-web-app-title" content="Handy" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/app-icon-192.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-icon-180x180.png" />
-    <title>Omnificology</title>
+    <title>Handy</title>
     <style>
       * { box-sizing: border-box; }
       body { margin: 0; }
@@ -21,9 +21,25 @@
       /* Prevent text size adjustment on orientation change */
       html { -webkit-text-size-adjust: 100%; }
     </style>
-    <script type="module" crossorigin src="/assets/index-TtTuLOEf.js"></script>
+    <script type="module" crossorigin src="/assets/index-BHy6UGvL.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Dev only: unregister PWA service worker before Vite modules load (avoids stale React + HMR failures).
+      if (
+        (location.hostname === "localhost" || location.hostname === "127.0.0.1") &&
+        "serviceWorker" in navigator
+      ) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        });
+        if (typeof caches !== "undefined") {
+          caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+          });
+        }
+      }
+    </script>
   </body>
 </html>

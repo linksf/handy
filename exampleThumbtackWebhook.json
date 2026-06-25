@@ -1,0 +1,129 @@
+{
+    "negotiationID": "581798716676227081",
+    "createdAt": "2026-06-08T18:45:16Z",
+    "customer": {
+      "customerID": "566510215274676232",
+      "firstName": "Jeni",
+      "lastName": "M",
+      "phone": "2344234019"
+    },
+    "business": {
+      "businessID": "567536553635102723",
+      "name": "Shane Alan",
+      "imageURL": "https://production-next-images-cdn.thumbtack.com/i/569729982627520526/desktop/standard/fullscreen",
+      "accessCode": "4240899"
+    },
+    "request": {
+      "requestID": "581798668964429832",
+      "customerID": "566510215274676232",
+      "contactedBusinesses": [],
+      "description": "Hi, need to move these to the room on the same level.",
+      "category": {
+        "categoryID": "109125193401647362",
+        "name": "Handyman"
+      },
+      "proposedTimes": [
+        {
+          "start": "2026-06-08T07:00:00Z",
+          "end": "2026-06-09T06:59:00Z"
+        },
+        {
+          "start": "2026-06-09T07:00:00Z",
+          "end": "2026-06-10T06:59:00Z"
+        },
+        {
+          "start": "2026-06-10T07:00:00Z",
+          "end": "2026-06-11T06:59:00Z"
+        }
+      ],
+      "location": {
+        "address1": "",
+        "address2": "",
+        "city": "San Francisco",
+        "state": "CA",
+        "zipCode": "94109"
+      },
+      "travelPreferences": [
+        "ProviderTravelToCustomer"
+      ],
+      "details": [
+        {
+          "question": "Property type",
+          "answer": "Home"
+        },
+        {
+          "question": "Project type",
+          "answer": "Assembly"
+        },
+        {
+          "question": "Photos",
+          "answer": "https://www.thumbtack.com/attachment/1cc1f3ef73a00efaa8bd0b4d59f2f80e89e9afd0/image, https://www.th..."
+        },
+        {
+          "question": "Category",
+          "answer": "Handyman"
+        },
+        {
+          "question": "Project location",
+          "answer": "Bedroom"
+        },
+        {
+          "question": "Anything else",
+          "answer": "Hi, need to move these to the room on the same level."
+        },
+        {
+          "question": "Scheduling",
+          "answer": "Dates: Jun 8-10"
+        },
+        {
+          "question": "Work focus",
+          "answer": "Furniture"
+        },
+        {
+          "question": "Estimated hours",
+          "answer": "Less than 2 hours (Simple tasks)"
+        },
+        {
+          "question": "Zip code",
+          "answer": "94109"
+        },
+        {
+          "question": "Travel Preferences",
+          "answer": "The handyman travels to me"
+        }
+      ],
+      "attachments": [
+        {
+          "fileName": "D0745D2F-8251-4CB6-98B8-AFC3BC7F12A6.jpg",
+          "fileSize": 633496,
+          "mimeType": "image/jpeg",
+          "url": "https://www.thumbtack.com/attachment/1cc1f3ef73a00efaa8bd0b4d59f2f80e89e9afd0/D0745D2F-8251-4CB6-98...",
+          "description": "Need to disassemble this, pack in a blanket and move the parts to the room on the sane level."
+        },
+        {
+          "fileName": "ED39F04B-41AE-42D5-A2D1-5EBC05B830D7.jpg",
+          "fileSize": 384657,
+          "mimeType": "image/jpeg",
+          "url": "https://www.thumbtack.com/attachment/d73fd31c3f911c67ba5b5cc50fda993e0449db2f/ED39F04B-41AE-42D5-A2...",
+          "description": "Need to move to a room on the same level"
+        },
+        {
+          "fileName": "D18C4279-420A-494E-B188-0F44D951FAF0.jpg",
+          "fileSize": 676060,
+          "mimeType": "image/jpeg",
+          "url": "https://www.thumbtack.com/attachment/4021cefb91b2e1a6a4aaa3bfd29a83ca2b6f2701/D18C4279-420A-494E-B1...",
+          "description": "Need to move to a room on the same level"
+        }
+      ]
+    },
+    "estimate": {
+      "type": "PerUnit",
+      "pricePerUnit": "75.00",
+      "unitQuantity": 0,
+      "unitName": "Hour",
+      "total": "$75/hour"
+    },
+    "status": "Open",
+    "leadPrice": "",
+    "chargeState": "Pending"
+  }

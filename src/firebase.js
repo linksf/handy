@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
+import { initAuthRecaptcha } from "./auth/initRecaptcha";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAghSMSajX2wqknLvlW9jwkxECWGNQKjfg",
@@ -30,6 +32,13 @@ const firebaseConfig = {
 // };
 
 const app = initializeApp(firebaseConfig);
+export { app };
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app);
+
+/** Resolves when reCAPTCHA Enterprise + Auth config are ready (or failed softly). */
+export const authRecaptchaReady = initAuthRecaptcha(auth).catch((err) => {
+  console.warn("[auth] reCAPTCHA init failed; sign-in may retry config automatically:", err);
+});
 

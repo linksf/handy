@@ -1,0 +1,48 @@
+<svg viewBox="0 0 400 500" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Shield -->
+  <path d="M50 150 L200 50 L350 150 L300 420 L100 420 Z"
+        fill="#1f2a44"/>
+
+  <!-- Inner Shield -->
+  <path d="M80 160 L200 80 L320 160 L280 390 L120 390 Z"
+        fill="#f58220"/>
+
+  <!-- Tools -->
+  <g stroke="#ccc" stroke-width="10" stroke-linecap="round">
+    <line x1="120" y1="120" x2="200" y2="200"/>
+    <line x1="280" y1="120" x2="200" y2="200"/>
+  </g>
+
+  <!-- Head (simplified silhouette) -->
+  <circle cx="200" cy="200" r="60" fill="#f2c29b"/>
+
+  <!-- Hair -->
+  <path d="M140 180 Q200 120 260 180 Z" fill="#5a3e2b"/>
+
+  <!-- Mustache -->
+  <path d="M160 220 Q200 240 240 220 Q200 230 160 220 Z"
+        fill="#5a3e2b"/>
+
+  <!-- Body -->
+  <rect x="130" y="250" width="140" height="120" fill="#2d3e5f"/>
+
+  <!-- Banner -->
+  <rect x="60" y="350" width="280" height="60" rx="10"
+        fill="#1f2a44"/>
+
+  <!-- Text -->
+  <text x="200" y="385" font-size="28"
+        text-anchor="middle" fill="white"
+        font-family="Arial, sans-serif"
+        font-weight="bold">
+    HANDYMAN
+  </text>
+
+  <text x="200" y="410" font-size="16"
+        text-anchor="middle" fill="white"
+        font-family="Arial, sans-serif">
+    SERVICE
+  </text>
+
+</svg>

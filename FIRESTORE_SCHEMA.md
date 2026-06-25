@@ -1,0 +1,183 @@
+# Firestore schema and security (Handy)
+
+Single-operator app: client booking on `/` (and `/profile`), owner dashboard on `/admin`, same Firebase project.
+
+## Roles
+
+| Role | Auth | Access |
+|------|------|--------|
+| **Owner** | Google sign-in on `/admin` with allowlisted email (`ALLOWED_GOOGLE_EMAIL` + `src/auth/allowlistEmail.js`) **or** custom claim `role: "owner"` | All operational collections; read all `clientProfiles` |
+| **Client** | Email/password or Google on `/` (client app; no phone sign-in) | Own `clientProfiles/{uid}`; own `bookingRequests`; read `availability` where `status == "open"` (must be signed in) |
+| **Anonymous** | — | No Firestore access |
+
+Set the owner claim (optional; re-sign-in required after):
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/serviceAccount.json
+npm run set-owner-claim -- owner@example.com
+```
+
+Keep `firestore.rules` `legacyOwnerEmailMatches()` aligned if you change `ALLOWED_GOOGLE_EMAIL` (rules cannot import JS).
+
+---
+
+## Collections
+
+### `customers`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `name` | string | Required in UI |
+| `phone` | string | |
+| `email` | string | |
+| `address` | string | |
+| `notes` | string | |
+| `squareCustomerId` | string | Optional; Square Customers API id |
+
+**Owner:** read/write. **Client:** none.
+
+---
+
+### `jobs`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `title` | string | |
+| `customerId` | string | Refers to `customers` doc id |
+| `date` | string | `YYYY-MM-DD` (date input) |
+| `status` | string | `Scheduled` \| `In Progress` \| `Complete` \| `Cancelled` |
+| `price` | string/number | Flat rate |
+| `hourlyRate` | string/number | |
+| `hours` | string/number | |
+| `notes` | string | |
+| `tasks` | array | Job checklist + materials, etc. |
+| `expenses` | array | Optional |
+| `payStatus` | string | `Unpaid` \| `Partial` \| `Paid` |
+| `amountPaid` | number | |
+| `sourceBookingRequestId` | string | Optional; set when created from a booking request |
+| `bookingClientUid` | string | Optional; client Firebase uid from that request |
+| `squareInvoiceId` | string | Optional; Square invoice id |
+| `squarePublicUrl` | string | Optional; hosted payment link |
+| `squareInvoiceStatus` | string | Optional; `unpaid` \| `partial` \| `paid` \| `canceled` |
+| `firestoreInvoiceId` | string | Optional; `invoices` doc id |
+
+**Owner:** read/write. **Client:** none.
+
+---
+
+### `jobs/{jobId}/workSessions`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `startMs` | number | |
+| `endMs` | number \| null | null = active session |
+| `durationMinutes` | number | Set on stop |
+| `billableMinutes` | number | |
+| `billableHours` | number | |
+
+**Owner:** read/write. **Client:** none.
+
+---
+
+### `tools`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `name` | string | |
+
+**Owner:** read/write.
+
+---
+
+### `tasks` (task **templates**, not job line items)
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `name` | string | |
+| `toolIds` | array of string | Ids in `tools` |
+
+Per-job work lives on `jobs.tasks` in the app. Renaming this collection to `taskTemplates` would be a separate migration.
+
+**Owner:** read/write.
+
+---
+
+### `availability`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `start` | Timestamp | |
+| `end` | Timestamp | |
+| `slotDurationMinutes` | number | e.g. 60 |
+| `status` | string | `open` \| `closed` |
+| `label` | string | Optional |
+| `createdAt` | Timestamp | |
+
+**Owner:** full CRUD. **Signed-in client:** read documents where `status == "open"` only.
+
+---
+
+### `bookingRequests`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `clientUid` | string | Must equal creator’s `auth.uid` on create |
+| `availabilityId` | string | Source availability doc |
+| `requestedStart` | Timestamp | |
+| `requestedEnd` | Timestamp | |
+| `requestedDurationMinutes` | number | |
+| `title` | string | |
+| `location` | string | |
+| `phone` | string | |
+| `clientName` | string | |
+| `notes` | string | |
+| `status` | string | `pending` \| `approved` \| `declined` |
+| `linkedJobId` | string | Optional; set when owner creates a job from this request |
+| `createdAt` | Timestamp | |
+| `updatedAt` | Timestamp | |
+
+**Create (client):** `status` must be `pending` and `clientUid` must match. **Read:** owner; owning client for any status; any signed-in client for `pending` / `approved` (time overlap checks only). **Update/delete:** owner only.
+
+---
+
+### `clientProfiles/{uid}`
+
+Document id = client’s Firebase Auth uid.
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `displayName` | string | |
+| `address` | string | |
+| `phone` | string | |
+| `updatedAt` | Timestamp | |
+
+**Read:** profile owner or app owner. **Write:** profile owner only (create/update).
+
+---
+
+### `invoices`
+
+| Field | Type | Notes |
+|-------|------|--------|
+| `jobId` | string | Source job |
+| `jobTitle` | string | Display title |
+| `clientUid` | string | From `job.bookingClientUid`; empty for walk-in jobs |
+| `customerId` | string | `customers` doc id |
+| `squareInvoiceId` | string | Square invoice id |
+| `publicUrl` | string | Hosted payment link |
+| `amountCents` | number | Total billed |
+| `status` | string | `unpaid` \| `partial` \| `paid` \| `canceled` \| `draft` |
+| `createdAt` | Timestamp | |
+| `updatedAt` | Timestamp | |
+
+**Owner:** full CRUD. **Client:** read where `clientUid == auth.uid`.
+
+Jobs may also store `squareInvoiceId`, `squarePublicUrl`, `squareInvoiceStatus`, `firestoreInvoiceId` for quick admin access.
+
+`customers` may store `squareCustomerId` for Square API reuse.
+
+---
+
+## Indexes
+
+See [`firestore.indexes.json`](firestore.indexes.json) (`availability`: `status` + `start`; `bookingRequests` composites for scheduling and client history).

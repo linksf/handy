@@ -1,11 +1,125 @@
-rules_version='2'
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null
+
+    /**
+     * Owner access:
+     * - Preferred: Firebase Auth custom claim role == "owner" (set via scripts/setOwnerClaim.mjs).
+     * - Legacy: same Gmail variants as src/constants.js ALLOWED_GOOGLE_EMAIL + src/auth/allowlistEmail.js
+     *   (Rules cannot import JS; keep this regex aligned when changing the allowlisted address.)
+     */
+    function hasOwnerClaim() {
+      return request.auth != null && request.auth.token.role == "owner";
+    }
+
+    function legacyOwnerEmailMatches() {
+      return request.auth != null
         && request.auth.token.email != null
-        && lower(request.auth.token.email) == 'omnificology@gmail.com';
+        && (
+          request.auth.token.email.lower() == "omnificology@gmail.com"
+          || request.auth.token.email.lower().matches(
+            "^o\\.?m\\.?n\\.?i\\.?f\\.?i\\.?c\\.?o\\.?l\\.?o\\.?g\\.?y(\\+[^@]*)?@(gmail|googlemail)\\.com$"
+          )
+        );
+    }
+
+    function isOwner() {
+      return hasOwnerClaim() || legacyOwnerEmailMatches();
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /customers/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    match /jobs/{jobId} {
+      allow read, write: if isOwner();
+    }
+
+    /** Time tracking; parent job rules do not cascade to subcollections. */
+    match /jobs/{jobId}/workSessions/{sessionId} {
+      allow read, write: if isOwner();
+    }
+
+    match /tools/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    match /tasks/{docId} {
+      allow read, write: if isOwner();
+    }
+
+    /** Task names for client booking — no tools or owner metadata. */
+    match /taskCatalog/{docId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner();
+    }
+
+    /** Clients must be signed in to read open blocks (reduces anonymous scraping). */
+    match /availability/{docId} {
+      allow read: if isOwner() || (isSignedIn() && resource.data.status == "open");
+      allow create, update, delete: if isOwner();
+    }
+
+    match /bookingRequests/{docId} {
+      allow create: if isSignedIn()
+        && request.resource.data.clientUid == request.auth.uid
+        && request.resource.data.status == "pending";
+      // Clients read own requests; any signed-in user may read pending/approved times
+      // so overlap checks before create can query the collection (see ClientBookingFlow).
+      allow read: if isOwner()
+        || (isSignedIn() && resource.data.clientUid == request.auth.uid)
+        || (isSignedIn() && resource.data.status in ["pending", "approved"]);
+      allow update, delete: if isOwner();
+    }
+
+    /** Owner may read profiles for booking context; only the client may write their doc. */
+    match /clientProfiles/{userId} {
+      allow read: if isOwner() || (isSignedIn() && request.auth.uid == userId);
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** Square invoices: owner manages; client reads their own (when linked via bookingClientUid). */
+    match /invoices/{invoiceId} {
+      allow read: if isOwner()
+        || (isSignedIn() && resource.data.clientUid == request.auth.uid);
+      allow create, update, delete: if isOwner();
+    }
+
+    /**
+     * Thumbtack / lead invite — client claims via token URL or phone match callable.
+     * Doc id is the invite token (unguessable).
+     */
+    match /leadInvites/{token} {
+      allow get: if isOwner()
+        || (isSignedIn() && (
+          resource.data.clientUid == request.auth.uid
+          || (resource.data.clientUid == null && resource.data.status in ["open", "claimed"])
+        ));
+      allow update: if isSignedIn() && (
+        isOwner()
+        || (
+          resource.data.clientUid == request.auth.uid
+          && request.resource.data.clientUid == request.auth.uid
+        )
+        || (
+          resource.data.clientUid == null
+          && resource.data.status == "open"
+          && request.resource.data.clientUid == request.auth.uid
+          && request.resource.data.status == "claimed"
+        )
+        || (
+          resource.data.clientUid == request.auth.uid
+          && resource.data.status in ["open", "claimed"]
+          && request.resource.data.status == "submitted"
+          && request.resource.data.clientUid == request.auth.uid
+        )
+      );
+      allow create, delete: if isOwner();
     }
   }
 }

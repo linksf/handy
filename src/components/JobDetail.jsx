@@ -19,6 +19,11 @@ export default function JobDetail({ ctx }) {
   const customer = getCustomer(job.customerId);
   const costBreakdown = jobCostBreakdown(job);
   const profit = jobRevenue(job) - costBreakdown.total;
+  const st = statusColor[job.status] || { bg: "#ecf0f1", tc: "#232323" };
+  const paySt = payColor[job.payStatus] || { bg: "#ecf0f1", tc: "#232323" };
+  const inviteUrl = job.leadInviteToken
+    ? `${window.location.origin}/book/lead/${encodeURIComponent(job.leadInviteToken)}`
+    : null;
 
   const saveJob = (updates) => updateJob({ ...job, ...updates });
 
@@ -30,10 +35,34 @@ export default function JobDetail({ ctx }) {
           <div style={{ fontSize: 13, color: "#7f8c8d" }}>{customer?.name} · {job.date}</div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Badge text={job.status} {...statusColor[job.status]} />
-          <Badge text={job.payStatus} {...payColor[job.payStatus]} />
+          <Badge text={job.status} color={st.bg} textColor={st.tc} />
+          <Badge text={job.payStatus} color={paySt.bg} textColor={paySt.tc} />
         </div>
       </div>
+      {inviteUrl && job.status === "Draft" ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "12px 14px",
+            background: "#e8daef",
+            borderRadius: 8,
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Client setup link</div>
+          <div style={{ wordBreak: "break-all", marginBottom: 8 }}>{inviteUrl}</div>
+          <Btn
+            small
+            onClick={() => {
+              navigator.clipboard.writeText(inviteUrl);
+              ctx.showToast?.("Link copied!");
+            }}
+          >
+            Copy link
+          </Btn>
+        </div>
+      ) : null}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, alignItems: "center" }}>
         {[["details", "📋"], ["tasks", null], ["expenses", "💸"], ["checklist", "📦"], ["invoice", "🧾"]].map(([t, emoji]) => {
           const active = tab === t;
@@ -58,7 +87,7 @@ export default function JobDetail({ ctx }) {
       {tab === "tasks" && <TasksTab job={job} saveJob={saveJob} ctx={ctx} />}
       {tab === "expenses" && <ExpensesTab job={job} saveJob={saveJob} />}
       {tab === "checklist" && <ChecklistTab job={job} ctx={ctx} />}
-      {tab === "invoice" && <InvoiceTab job={job} saveJob={saveJob} customer={customer} costBreakdown={costBreakdown} jobRevenue={jobRevenue} />}
+      {tab === "invoice" && <InvoiceTab job={job} saveJob={saveJob} customer={customer} costBreakdown={costBreakdown} />}
       {confirm && <ConfirmModal message={confirm.message} onConfirm={() => { confirm.onConfirm(); setConfirm(null); }} onCancel={() => setConfirm(null)} />}
     </div>
   );
