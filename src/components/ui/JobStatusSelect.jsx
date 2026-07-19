@@ -9,6 +9,7 @@ export default function JobStatusSelect({ job, updateJob }) {
 
   useEffect(() => {
     setSelected(job.status || STATUSES[0]);
+    setError("");
   }, [job.status]);
 
   const options = STATUSES.includes(job.status)
@@ -19,7 +20,7 @@ export default function JobStatusSelect({ job, updateJob }) {
   const changeStatus = async (event) => {
     event.stopPropagation();
     const nextStatus = event.target.value;
-    if (nextStatus === job.status) return;
+    if (nextStatus === selected) return;
 
     setSelected(nextStatus);
     setError("");
@@ -38,6 +39,7 @@ export default function JobStatusSelect({ job, updateJob }) {
     <div onClick={(event) => event.stopPropagation()}>
       <select
         aria-label={`Status for ${job.title || "job"}`}
+        aria-busy={saving}
         value={selected}
         onChange={changeStatus}
         disabled={saving}
