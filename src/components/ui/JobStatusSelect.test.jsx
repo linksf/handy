@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { STATUSES } from "../../constants";
 import JobStatusSelect from "./JobStatusSelect";
@@ -106,6 +106,40 @@ describe("JobStatusSelect", () => {
     );
     expect(select).toHaveValue("Draft");
     expect(select).not.toBeDisabled();
+  });
+
+  test("restores the latest persisted status when an older save rejects", async () => {
+    let rejectSave;
+    const updateJob = vi.fn(
+      () => new Promise((_, reject) => {
+        rejectSave = reject;
+      })
+    );
+    const { rerender } = render(
+      <JobStatusSelect job={job} updateJob={updateJob} />
+    );
+
+    const select = screen.getByRole("combobox");
+    fireEvent.change(select, { target: { value: "Complete" } });
+    expect(select).toBeDisabled();
+
+    rerender(
+      <JobStatusSelect
+        job={{ ...job, status: "Scheduled" }}
+        updateJob={updateJob}
+      />
+    );
+    expect(select).toHaveValue("Scheduled");
+
+    await act(async () => {
+      rejectSave(new Error("offline"));
+    });
+
+    expect(select).toHaveValue("Scheduled");
+    expect(select).not.toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not update job status. Try again."
+    );
   });
 
   test("clears a stale save error when persisted status changes", async () => {

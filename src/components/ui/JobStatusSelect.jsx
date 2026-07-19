@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STATUSES, statusColor } from "../../constants";
 
 export default function JobStatusSelect({ job, updateJob }) {
@@ -6,9 +6,11 @@ export default function JobStatusSelect({ job, updateJob }) {
   const [selected, setSelected] = useState(initialStatus);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const latestPersistedStatus = useRef(initialStatus);
 
   useEffect(() => {
-    setSelected(job.status || STATUSES[0]);
+    latestPersistedStatus.current = job.status || STATUSES[0];
+    setSelected(latestPersistedStatus.current);
     setError("");
   }, [job.status]);
 
@@ -28,7 +30,7 @@ export default function JobStatusSelect({ job, updateJob }) {
     try {
       await updateJob({ ...job, status: nextStatus });
     } catch {
-      setSelected(job.status || STATUSES[0]);
+      setSelected(latestPersistedStatus.current);
       setError("Could not update job status. Try again.");
     } finally {
       setSaving(false);
