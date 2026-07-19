@@ -2,10 +2,11 @@ import { useState } from "react";
 import Card from "./ui/Card";
 import Btn from "./ui/Btn";
 import Badge from "./ui/Badge";
-import { STATUSES, statusColor, payColor } from "../constants";
+import JobStatusSelect from "./ui/JobStatusSelect";
+import { STATUSES, payColor } from "../constants";
 
 export default function Jobs({ ctx }) {
-  const { data, nav, getCustomer, jobCost, jobRevenue } = ctx;
+  const { data, nav, getCustomer, jobCost, jobRevenue, updateJob } = ctx;
   const [filter, setFilter] = useState("All");
   const filtered = filter === "All" ? data.jobs : data.jobs.filter(j => j.status === filter);
   return (
@@ -39,7 +40,7 @@ export default function Jobs({ ctx }) {
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <span style={{ fontWeight: 700 }}>${jobRevenue(j).toFixed(2)}</span>
-                  <Badge text={j.status} {...statusColor[j.status]} />
+                  <JobStatusSelect job={j} updateJob={updateJob} />
                   <Badge text={j.payStatus} {...payColor[j.payStatus]} />
                 </div>
               </div>

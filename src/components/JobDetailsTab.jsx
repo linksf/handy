@@ -3,6 +3,7 @@ import Card from "./ui/Card";
 import Btn from "./ui/Btn";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
+import JobStatusSelect from "./ui/JobStatusSelect";
 import { STATUSES } from "../constants";
 import { useMobile } from "../hooks/useMobile";
 import { db } from "../firebase";
@@ -21,7 +22,7 @@ import {
 export default function JobDetailsTab({ job, saveJob, ctx, costBreakdown, profit }) {
   const isMobile = useMobile();
   const cost = costBreakdown.total;
-  const { data, jobRevenue } = ctx;
+  const { data, jobRevenue, updateJob } = ctx;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(job);
   const f = (k) => (v) => setForm(x => ({ ...x, [k]: v }));
@@ -189,12 +190,16 @@ export default function JobDetailsTab({ job, saveJob, ctx, costBreakdown, profit
             <span style={{ fontWeight: 700 }}>Job Details</span>
             <Btn small onClick={() => setEditing(true)}>Edit</Btn>
           </div>
-          {[["Date", job.date], ["Status", job.status]].filter(([, v]) => v).map(([l, v]) => (
-            <div key={l} style={{ marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{l}:</span>{" "}
-              <span style={{ fontSize: 13 }}>{v}</span>
+          {job.date && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Date:</span>{" "}
+              <span style={{ fontSize: 13 }}>{job.date}</span>
             </div>
-          ))}
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Status:</span>
+            <JobStatusSelect job={job} updateJob={updateJob} />
+          </div>
           {/* Revenue breakdown */}
           {flatRate > 0 && (
             <div style={{ marginBottom: 6 }}>
