@@ -3,23 +3,35 @@ import * as admin from "firebase-admin";
 import {generateOpaqueCustomerId} from "@handy/shared";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
-const stringFields = [
-  "phone",
-  "email",
-  "address",
-  "preferredTiming",
-  "howFoundUs",
-  "propertyType",
-  "indoorOutdoor",
-  "urgency",
-  "estimatedHours",
-  "accessNotes",
-  "materials",
-  "dimensionsNotes",
-  "installOrPickup",
-  "finishNotes",
-  "deadline",
-] as const;
+const stringFieldLimits = {
+  phone: 500,
+  email: 500,
+  address: 1000,
+  preferredTiming: 500,
+  howFoundUs: 500,
+  propertyType: 500,
+  indoorOutdoor: 500,
+  urgency: 500,
+  estimatedHours: 500,
+  accessNotes: 1000,
+  materials: 1000,
+  dimensionsNotes: 1000,
+  installOrPickup: 500,
+  finishNotes: 1000,
+  deadline: 500,
+} as const;
+
+const stringFields = Object.keys(stringFieldLimits) as Array<
+  keyof typeof stringFieldLimits
+>;
+
+export interface ValidatedInquiryInput {
+  category: "handyman" | "fabrication";
+  name: string;
+  description: string;
+  optionalFields: Record<string, string>;
+  photoUrls: string[];
+}
 
 function initializeAdmin(): FirebaseFirestore.Firestore {
   if (!admin.apps.length) {
@@ -38,17 +50,47 @@ function submittedStringFields(
 
 function submittedPhotoUrls(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  if (value.length > 10) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Photo URLs may contain at most 10 items.",
+    );
+  }
+  return value.map((item) => {
+    if (typeof item !== "string") {
+      throw new HttpsError(
+        "invalid-argument",
+        "Each photo URL must be a string.",
+      );
+    }
+    const url = item.trim();
+    if (url.length > 2000) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Photo URL maximum length is 2000 characters.",
+      );
+    }
+    return url;
+  }).filter(Boolean);
 }
 
-/**
- * Accepts a guest inquiry and atomically creates its preliminary customer.
- */
-export const submitInquiry = onCall({invoker: "public"}, async (request) => {
-  const data = (request.data || {}) as Record<string, unknown>;
+function requireWithinLimit(
+  field: string,
+  value: string,
+  maxLength: number,
+): void {
+  if (value.length > maxLength) {
+    throw new HttpsError(
+      "invalid-argument",
+      `${field} maximum length is ${maxLength} characters.`,
+    );
+  }
+}
+
+/** Validate and normalize untrusted guest inquiry input. */
+export function validateInquiryInput(
+  data: Record<string, unknown>,
+): ValidatedInquiryInput {
   const category = String(data.category || "");
   if (category !== "handyman" && category !== "fabrication") {
     throw new HttpsError("invalid-argument", "Choose a valid category.");
@@ -62,12 +104,40 @@ export const submitInquiry = onCall({invoker: "public"}, async (request) => {
       "Name and description are required.",
     );
   }
+  requireWithinLimit("Name", name, 120);
+  requireWithinLimit("Description", description, 4000);
+
+  const optionalFields = submittedStringFields(data);
+  for (const field of stringFields) {
+    requireWithinLimit(field, optionalFields[field], stringFieldLimits[field]);
+  }
+
+  return {
+    category,
+    name,
+    description,
+    optionalFields,
+    photoUrls: submittedPhotoUrls(data.photoUrls),
+  };
+}
+
+/**
+ * Accepts a guest inquiry and atomically creates its preliminary customer.
+ */
+export const submitInquiry = onCall({invoker: "public"}, async (request) => {
+  const data = (request.data || {}) as Record<string, unknown>;
+  const {
+    category,
+    name,
+    description,
+    optionalFields,
+    photoUrls,
+  } = validateInquiryInput(data);
 
   const db = initializeAdmin();
   const customerId = generateOpaqueCustomerId();
   const inquiryRef = db.collection("inquiries").doc();
   const timestamp = admin.firestore.FieldValue.serverTimestamp();
-  const optionalFields = submittedStringFields(data);
   const clientUid = request.auth?.uid || null;
   const batch = db.batch();
 
@@ -87,7 +157,7 @@ export const submitInquiry = onCall({invoker: "public"}, async (request) => {
     name,
     description,
     ...optionalFields,
-    photoUrls: submittedPhotoUrls(data.photoUrls),
+    photoUrls,
     status: "new",
     customerId,
     clientUid,

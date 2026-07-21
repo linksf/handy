@@ -4,7 +4,7 @@ import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/https";
 import {defineSecret, defineString} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
-import {isOpaqueCustomerId} from "@handy/shared";
+import {generateOpaqueCustomerId, isOpaqueCustomerId} from "@handy/shared";
 import {generateInviteToken, normalizePhoneDigits} from "./leadInvite";
 
 const thumbtackWebhookSecret = defineSecret("THUMBTACK_WEBHOOK_SECRET");
@@ -280,14 +280,25 @@ export function buildThumbtackCustomerWritePayload(
     address: parsed.address,
     notes: parsed.customerNotes,
     leadInviteToken: token,
-    thumbtackCustomerId: parsed.thumbtackCustomerId,
   };
+  if (isOpaqueCustomerId(parsed.thumbtackCustomerId)) {
+    payload.thumbtackCustomerId = parsed.thumbtackCustomerId;
+  }
   if (!exists) {
     payload.status = "preliminary";
     payload.clientUid = null;
     payload.createdAt = createdAt;
   }
   return payload;
+}
+
+/** Use Thumbtack's opaque ID when valid, otherwise generate a safe local ID. */
+export function resolveThumbtackCustomerId(
+  thumbtackCustomerId: string,
+): string {
+  return isOpaqueCustomerId(thumbtackCustomerId) ?
+    thumbtackCustomerId :
+    generateOpaqueCustomerId();
 }
 
 export function parseThumbtackLeadPayload(body: unknown): ParsedThumbtackLead {
@@ -610,17 +621,24 @@ export const thumbtackWebhook = onRequest(
       const token = generateInviteToken();
       const phoneNormalized = normalizePhoneDigits(parsed.phone);
       const now = admin.firestore.FieldValue.serverTimestamp();
-
-      if (!parsed.thumbtackCustomerId) {
-        throw new Error("missing_thumbtack_customer_id");
-      }
-      if (!isOpaqueCustomerId(parsed.thumbtackCustomerId)) {
-        throw new Error("invalid_thumbtack_customer_id");
+      const hasValidThumbtackCustomerId =
+        isOpaqueCustomerId(parsed.thumbtackCustomerId);
+      const customerId = resolveThumbtackCustomerId(
+        parsed.thumbtackCustomerId,
+      );
+      if (!hasValidThumbtackCustomerId) {
+        logger.warn(
+          "Thumbtack webhook generated customer ID for invalid source ID",
+          {
+            externalId: parsed.externalId,
+            hasThumbtackCustomerId: Boolean(parsed.thumbtackCustomerId),
+          },
+        );
       }
 
       const batch = db.batch();
       const custRef = db.collection("customers")
-        .doc(parsed.thumbtackCustomerId);
+        .doc(customerId);
       const custSnapshot = await custRef.get();
       const customerPayload = buildThumbtackCustomerWritePayload(
         parsed,
@@ -654,7 +672,7 @@ export const thumbtackWebhook = onRequest(
       batch.set(jobRef, jobPayload);
 
       const inviteRef = db.collection("leadInvites").doc(token);
-      batch.set(inviteRef, {
+      const invitePayload: Record<string, unknown> = {
         token,
         customerId: custRef.id,
         jobId: jobRef.id,
@@ -667,13 +685,16 @@ export const thumbtackWebhook = onRequest(
         jobNotes: parsed.clientJobNotes,
         source: "thumbtack",
         sourceThumbtackLeadId: parsed.externalId || null,
-        thumbtackCustomerId: parsed.thumbtackCustomerId,
         status: "open",
         clientUid: null,
         bookingRequestId: null,
         createdAt: now,
         updatedAt: now,
-      });
+      };
+      if (hasValidThumbtackCustomerId) {
+        invitePayload.thumbtackCustomerId = parsed.thumbtackCustomerId;
+      }
+      batch.set(inviteRef, invitePayload);
 
       await batch.commit();
 
