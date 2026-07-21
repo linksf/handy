@@ -36,6 +36,7 @@ export default function ClientApp() {
   useEffect(() => {
     if (!user) {
       setOwnerGateReady(false);
+      setLeadLookupError(null);
       return undefined;
     }
     let cancelled = false;
@@ -77,7 +78,10 @@ export default function ClientApp() {
   useEffect(() => {
     if (!user?.uid || !ownerGateReady || route.kind === "lead") return;
     const raw = pendingLeadLookup.current;
-    if (!raw) return;
+    if (!raw) {
+      setLeadLookupError(null);
+      return;
+    }
     pendingLeadLookup.current = null;
     sessionStorage.removeItem("pendingLeadLookup");
     let cancelled = false;
