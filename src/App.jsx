@@ -14,6 +14,7 @@ import ToolsManager from "./components/ToolsManager";
 import TasksManager from "./components/TasksManager";
 import SchedulingManager from "./components/SchedulingManager";
 import CalendarAgenda from "./components/CalendarAgenda";
+import Inquiries from "./components/Inquiries";
 import NavBadge from "./components/ui/NavBadge";
 import { RECOMMENDED_TOOLS } from "./toolCatalog";
 import { ALLOWED_GOOGLE_EMAIL } from "./constants";
@@ -25,10 +26,12 @@ import {
   syncTaskCatalogEntry,
 } from "./utils/taskCatalog";
 import { db } from "./firebase";
+import { generateOpaqueCustomerId } from "@handy/shared";
 import {
   collection,
   onSnapshot,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   doc,
@@ -56,6 +59,7 @@ export default function App() {
   const [taskDefs, setTaskDefs] = useState([]);
   const [availability, setAvailability] = useState([]);
   const [bookingRequests, setBookingRequests] = useState([]);
+  const [inquiries, setInquiries] = useState([]);
   const [view, setView] = useState(() => parseAdminPath(window.location.pathname).view);
   const [viewParam, setViewParam] = useState(() => parseAdminPath(window.location.pathname).param);
   const [toast, setToast] = useState(null);
@@ -116,6 +120,14 @@ export default function App() {
     const q = query(collection(db, "bookingRequests"), orderBy("requestedStart", "desc"));
     return onSnapshot(q, (snap) => {
       setBookingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "inquiries"), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snap) => {
+      setInquiries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [user]);
 
@@ -214,6 +226,11 @@ export default function App() {
     [bookingRequests]
   );
 
+  const newInquiryCount = useMemo(
+    () => inquiries.filter((inquiry) => inquiry.status === "new").length,
+    [inquiries]
+  );
+
   const pendingBookings = useMemo(
     () =>
       bookingRequests
@@ -240,7 +257,7 @@ export default function App() {
 
   // Customer mutations
   const addCustomer = async (c) => {
-    await addDoc(collection(db, "customers"), c);
+    await setDoc(doc(db, "customers", generateOpaqueCustomerId()), c);
     showToast("Customer added!");
     nav("customers");
   };
@@ -443,7 +460,8 @@ export default function App() {
     }
     const displayName = (request.clientName || "").trim() || "Client";
     if (!customerId) {
-      const ref = await addDoc(collection(db, "customers"), {
+      customerId = generateOpaqueCustomerId();
+      await setDoc(doc(db, "customers", customerId), {
         name: displayName,
         phone: (request.phone || "").trim(),
         email: "",
@@ -452,7 +470,6 @@ export default function App() {
           .filter(Boolean)
           .join(" · "),
       });
-      customerId = ref.id;
     }
     const start = request.requestedStart?.toDate?.() || new Date();
     const dateStr = start.toISOString().slice(0, 10);
@@ -496,6 +513,14 @@ export default function App() {
     return !!jobId;
   };
 
+  const markInquiryReviewed = async (id) => {
+    await updateDoc(doc(db, "inquiries", id), {
+      status: "reviewed",
+      updatedAt: serverTimestamp(),
+    });
+    showToast("Inquiry marked reviewed.");
+  };
+
   const pages = {
     dashboard: Dashboard,
     customers: Customers,
@@ -508,6 +533,7 @@ export default function App() {
     tasks: TasksManager,
     scheduling: SchedulingManager,
     calendar: CalendarAgenda,
+    inquiries: Inquiries,
   };
   const Page = pages[view] || Dashboard;
 
@@ -524,6 +550,9 @@ export default function App() {
     customers,
     pendingBookingCount,
     pendingBookings,
+    inquiries,
+    newInquiryCount,
+    markInquiryReviewed,
     createJobFromBookingRequest,
     approveBookingRequest,
     showToast,
@@ -534,6 +563,7 @@ export default function App() {
     ["calendar", "Calendar"],
     ["customers", "Customers"],
     ["jobs", "Jobs"],
+    ["inquiries", "Inquiries"],
     ["tasks", "Tasks"],
     ["tools", "Tools"],
     ["scheduling", "Schedule"],
@@ -573,7 +603,9 @@ export default function App() {
     <>
       {navItems.map(([v, l]) => {
         const active = view === v;
-        const badge = v === "scheduling" ? pendingBookingCount : 0;
+        const badge =
+          v === "scheduling" ? pendingBookingCount :
+          v === "inquiries" ? newInquiryCount : 0;
         return (
           <button
             key={v}

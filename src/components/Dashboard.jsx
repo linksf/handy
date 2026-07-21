@@ -19,11 +19,56 @@ export default function Dashboard({ ctx }) {
     jobRevenue,
     pendingBookingCount,
     pendingBookings,
+    inquiries = [],
+    newInquiryCount = 0,
   } = ctx;
   const totalProfit = totalRevenue - totalCost;
   return (
     <div>
       <h2 style={{ marginTop: 0, color: "#232323", fontWeight: 700 }}>Dashboard</h2>
+
+      {newInquiryCount > 0 && (
+        <Card
+          style={{
+            marginBottom: 20,
+            background: "#eef6ff",
+            border: "2px solid #2980b9",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: "#232323" }}>
+                {newInquiryCount} new inquir{newInquiryCount === 1 ? "y" : "ies"}
+              </div>
+              <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
+                Review guest project requests and follow up with prospective customers.
+              </div>
+            </div>
+            <Btn onClick={() => nav("inquiries")}>Review inquiries</Btn>
+          </div>
+          {inquiries.filter((inquiry) => inquiry.status === "new").slice(0, 3).map((inquiry) => (
+            <div
+              key={inquiry.id}
+              style={{
+                marginTop: 12,
+                paddingTop: 12,
+                borderTop: "1px solid #cfe1f5",
+                fontSize: 13,
+                color: "#555",
+              }}
+            >
+              <strong style={{ color: "#232323" }}>{inquiry.name || "Unnamed inquiry"}</strong>
+              {" · "}
+              {inquiry.category === "fabrication" ? "Custom Fabrication" : "Handyman Services"}
+            </div>
+          ))}
+          {newInquiryCount > 3 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#7f8c8d" }}>
+              +{newInquiryCount - 3} more
+            </div>
+          )}
+        </Card>
+      )}
 
       {pendingBookingCount > 0 && (
         <div role="button" tabIndex={0} onClick={() => nav("scheduling")} onKeyDown={(e) => e.key === "Enter" && nav("scheduling")} style={{ cursor: "pointer" }}>

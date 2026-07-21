@@ -10,6 +10,7 @@ const VIEW_TO_SEGMENT = {
   tasks: "tasks",
   scheduling: "scheduling",
   calendar: "calendar",
+  inquiries: "inquiries",
 };
 
 export function adminPathForView(view, param = null) {
@@ -42,6 +43,7 @@ export function parseAdminPath(pathname) {
   if (a === "tasks") return { view: "tasks", param: null };
   if (a === "scheduling") return { view: "scheduling", param: null };
   if (a === "calendar") return { view: "calendar", param: null };
+  if (a === "inquiries") return { view: "inquiries", param: null };
 
   return { view: "dashboard", param: null };
 }

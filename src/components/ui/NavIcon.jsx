@@ -21,6 +21,13 @@ const paths = {
       <line x1="9" y1="16" x2="15" y2="16"/>
     </>
   ),
+  inquiries: (
+    <>
+      <path d="M4 5h16v11H8l-4 4z"/>
+      <line x1="8" y1="9" x2="16" y2="9"/>
+      <line x1="8" y1="13" x2="14" y2="13"/>
+    </>
+  ),
   tasks: (
     <>
       <polyline points="9 11 12 14 22 4"/>
