@@ -33,6 +33,7 @@ export default function ClientApp() {
   const accountMenuRef = useRef(null);
   const [ownerGateReady, setOwnerGateReady] = useState(false);
   const [leadLookupError, setLeadLookupError] = useState(null);
+  const [inquiryLinkError, setInquiryLinkError] = useState(null);
   const [authMode, setAuthMode] = useState("signin");
   const pendingLeadLookup = useRef(sessionStorage.getItem("pendingLeadLookup"));
   const pendingInquiryLink = useRef(sessionStorage.getItem("pendingInquiryLink"));
@@ -41,6 +42,7 @@ export default function ClientApp() {
     if (!user) {
       setOwnerGateReady(false);
       setLeadLookupError(null);
+      setInquiryLinkError(null);
       return undefined;
     }
     let cancelled = false;
@@ -88,15 +90,24 @@ export default function ClientApp() {
     let cancelled = false;
     (async () => {
       try {
+        setInquiryLinkError(null);
         const payload = JSON.parse(raw);
         const linkInquiry = httpsCallable(functions, "linkInquiryToClient");
         await linkInquiry({
           inquiryId: payload.inquiryId,
           customerId: payload.customerId,
         });
-        if (!cancelled) sessionStorage.removeItem("pendingInquiryLink");
+        if (!cancelled) {
+          sessionStorage.removeItem("pendingInquiryLink");
+          setInquiryLinkError(null);
+        }
       } catch (err) {
         console.error("Guest inquiry linking failed:", err);
+        if (!cancelled) {
+          setInquiryLinkError(
+            err?.message || "We couldn't link your inquiry to your account. Try again.",
+          );
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -388,7 +399,7 @@ export default function ClientApp() {
         )}
       </nav>
 
-      {leadLookupError && (
+      {(leadLookupError || inquiryLinkError) && (
         <p
           role="alert"
           style={{
@@ -402,7 +413,7 @@ export default function ClientApp() {
             fontSize: 14,
           }}
         >
-          {leadLookupError}
+          {leadLookupError || inquiryLinkError}
         </p>
       )}
 
