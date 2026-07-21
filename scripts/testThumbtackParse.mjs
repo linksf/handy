@@ -14,10 +14,26 @@ const root = resolve(__dirname, "..");
 const examplePath = resolve(root, "exampleThumbtackWebhook.json");
 
 const mod = await import(resolve(root, "functions/lib/thumbtackWebhook.js"));
-const { parseThumbtackLeadPayload } = mod;
+const {
+  buildThumbtackCustomerWritePayload,
+  parseThumbtackLeadPayload,
+} = mod;
 
 const raw = JSON.parse(readFileSync(examplePath, "utf8"));
 const parsed = parseThumbtackLeadPayload(raw);
+const createdAt = { sentinel: "created-at" };
+const existingCustomerPayload = buildThumbtackCustomerWritePayload(
+  parsed,
+  "invite-token",
+  createdAt,
+  true,
+);
+const newCustomerPayload = buildThumbtackCustomerWritePayload(
+  parsed,
+  "invite-token",
+  createdAt,
+  false,
+);
 
 const checks = [
   ["name", parsed.name, "Jeni M"],
@@ -33,6 +49,12 @@ const checks = [
   ["client notes omit estimate line", parsed.clientJobNotes.includes("$75/hour"), false],
   ["admin notes include proposed times", parsed.adminJobNotes.includes("proposed times"), true],
   ["client notes include description", parsed.clientJobNotes.includes("move these"), true],
+  ["existing customer preserves status", "status" in existingCustomerPayload, false],
+  ["existing customer preserves clientUid", "clientUid" in existingCustomerPayload, false],
+  ["existing customer preserves createdAt", "createdAt" in existingCustomerPayload, false],
+  ["new customer gets preliminary status", newCustomerPayload.status, "preliminary"],
+  ["new customer gets null clientUid", newCustomerPayload.clientUid, null],
+  ["new customer gets createdAt", newCustomerPayload.createdAt, createdAt],
 ];
 
 let failed = 0;

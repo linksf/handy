@@ -256,6 +256,40 @@ export interface ParsedThumbtackLead {
   jobNotes: string;
 }
 
+type ThumbtackCustomerFields = Pick<
+  ParsedThumbtackLead,
+  | "name"
+  | "phone"
+  | "email"
+  | "address"
+  | "customerNotes"
+  | "thumbtackCustomerId"
+>;
+
+/** Build a customer merge without resetting ownership or lifecycle fields. */
+export function buildThumbtackCustomerWritePayload(
+  parsed: ThumbtackCustomerFields,
+  token: string,
+  createdAt: unknown,
+  exists: boolean,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: parsed.name,
+    phone: parsed.phone,
+    email: parsed.email,
+    address: parsed.address,
+    notes: parsed.customerNotes,
+    leadInviteToken: token,
+    thumbtackCustomerId: parsed.thumbtackCustomerId,
+  };
+  if (!exists) {
+    payload.status = "preliminary";
+    payload.clientUid = null;
+    payload.createdAt = createdAt;
+  }
+  return payload;
+}
+
 export function parseThumbtackLeadPayload(body: unknown): ParsedThumbtackLead {
   const root = normalizeThumbtackPayload(body);
   const customer = asRecord(root.customer);
@@ -587,18 +621,14 @@ export const thumbtackWebhook = onRequest(
       const batch = db.batch();
       const custRef = db.collection("customers")
         .doc(parsed.thumbtackCustomerId);
-      batch.set(custRef, {
-        name: parsed.name,
-        phone: parsed.phone,
-        email: parsed.email,
-        address: parsed.address,
-        notes: parsed.customerNotes,
-        status: "preliminary",
-        clientUid: null,
-        leadInviteToken: token,
-        thumbtackCustomerId: parsed.thumbtackCustomerId,
-        createdAt: now,
-      }, {merge: true});
+      const custSnapshot = await custRef.get();
+      const customerPayload = buildThumbtackCustomerWritePayload(
+        parsed,
+        token,
+        now,
+        custSnapshot.exists,
+      );
+      batch.set(custRef, customerPayload, {merge: true});
 
       const jobRef = db.collection("jobs").doc();
       const jobPayload: Record<string, unknown> = {
