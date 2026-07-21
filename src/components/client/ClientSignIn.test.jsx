@@ -43,3 +43,16 @@ test("shows continue as guest", () => {
 
   expect(onContinueAsGuest).toHaveBeenCalled();
 });
+
+test("can open directly in create account mode", () => {
+  render(
+    <ClientSignIn
+      initialMode="signup"
+      onSignIn={vi.fn()}
+      onSignUp={vi.fn()}
+    />,
+  );
+
+  expect(screen.getAllByRole("button", { name: /create account/i })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: /^sign in$/i })).toHaveLength(1);
+});

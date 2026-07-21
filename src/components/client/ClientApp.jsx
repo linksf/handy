@@ -8,6 +8,7 @@ import { isOwnerFirebaseUser } from "../../auth/isOwnerFirebaseUser";
 import { BUSINESS_NAME } from "../../constants";
 import ClientSignIn from "./ClientSignIn";
 import ClientBookingFlow from "./ClientBookingFlow";
+import ClientGuestInquiry from "./ClientGuestInquiry";
 import ClientLeadFlow from "./ClientLeadFlow";
 import ClientProfile from "./ClientProfile";
 import { clientFont, colors } from "./clientTheme";
@@ -17,6 +18,7 @@ function parseClientRoute(pathname) {
   const p = pathname.replace(/\/$/, "") || "/";
   const leadMatch = p.match(/^\/book\/lead\/([^/]+)$/);
   if (leadMatch) return { kind: "lead", token: decodeURIComponent(leadMatch[1]) };
+  if (p === "/inquire") return { kind: "guest" };
   if (p === "/profile" || p === "/book/profile") return { kind: "profile" };
   return { kind: "book" };
 }
@@ -31,7 +33,9 @@ export default function ClientApp() {
   const accountMenuRef = useRef(null);
   const [ownerGateReady, setOwnerGateReady] = useState(false);
   const [leadLookupError, setLeadLookupError] = useState(null);
+  const [authMode, setAuthMode] = useState("signin");
   const pendingLeadLookup = useRef(sessionStorage.getItem("pendingLeadLookup"));
+  const pendingInquiryLink = useRef(sessionStorage.getItem("pendingInquiryLink"));
 
   useEffect(() => {
     if (!user) {
@@ -73,6 +77,30 @@ export default function ClientApp() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [accountMenuOpen]);
+
+  /** Best-effort link of a guest inquiry after account authentication. */
+  useEffect(() => {
+    if (!user?.uid || !ownerGateReady) return;
+    const raw = pendingInquiryLink.current ||
+      sessionStorage.getItem("pendingInquiryLink");
+    if (!raw) return;
+    pendingInquiryLink.current = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = JSON.parse(raw);
+        const linkInquiry = httpsCallable(functions, "linkInquiryToClient");
+        await linkInquiry({
+          inquiryId: payload.inquiryId,
+          customerId: payload.customerId,
+        });
+        if (!cancelled) sessionStorage.removeItem("pendingInquiryLink");
+      } catch (err) {
+        console.error("Guest inquiry linking failed:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.uid, ownerGateReady]);
 
   /** After sign-in, match an open Thumbtack lead by Customer ID. */
   useEffect(() => {
@@ -119,6 +147,19 @@ export default function ClientApp() {
     setRoute(parseClientRoute(url));
   }, []);
 
+  const goToGuestInquiry = useCallback(() => {
+    const url = "/inquire";
+    window.history.pushState({}, "", url);
+    setRoute(parseClientRoute(url));
+  }, []);
+
+  const goToAuth = useCallback((mode = "signin") => {
+    setAuthMode(mode);
+    const url = "/";
+    window.history.pushState({}, "", url);
+    setRoute(parseClientRoute(url));
+  }, []);
+
   useEffect(() => {
     const p = window.location.pathname.replace(/\/$/, "") || "/";
     if (p === "/book") window.history.replaceState({}, "", "/");
@@ -137,8 +178,17 @@ export default function ClientApp() {
   }
 
   if (!user) {
+    if (route.kind === "guest") {
+      return (
+        <ClientGuestInquiry
+          onSignIn={() => goToAuth("signin")}
+          onCreateAccount={() => goToAuth("signup")}
+        />
+      );
+    }
     return (
       <ClientSignIn
+        initialMode={authMode}
         onSignIn={signIn}
         onSignUp={signUp}
         onGoogleSignIn={signInWithGoogle}
@@ -147,6 +197,7 @@ export default function ClientApp() {
           sessionStorage.setItem("pendingLeadLookup", JSON.stringify(payload));
           pendingLeadLookup.current = JSON.stringify(payload);
         }}
+        onContinueAsGuest={goToGuestInquiry}
       />
     );
   }

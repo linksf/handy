@@ -34,8 +34,9 @@ export default function ClientSignIn({
   leadInvite = false,
   onFindLead,
   onContinueAsGuest,
+  initialMode = "signin",
 }) {
-  const [mode, setMode] = useState("signin");
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [thumbtackCustomerId, setThumbtackCustomerId] = useState("");
