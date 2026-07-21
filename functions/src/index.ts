@@ -24,3 +24,4 @@ setGlobalOptions({maxInstances: 10});
 export {thumbtackWebhook} from "./thumbtackWebhook";
 export {bookingRequestStatusNotifier} from "./bookingRequestNotifier";
 export {matchLeadInvite} from "./leadInvite";
+export {submitInquiry, linkInquiryToClient} from "./submitInquiry";

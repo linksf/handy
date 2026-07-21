@@ -36,6 +36,12 @@ service cloud.firestore {
       allow read, write: if isOwner();
     }
 
+    /** Guest inquiries are created only by the public submitInquiry callable. */
+    match /inquiries/{docId} {
+      allow read, update, delete: if isOwner();
+      allow create: if false;
+    }
+
     match /jobs/{jobId} {
       allow read, write: if isOwner();
     }
