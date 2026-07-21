@@ -1,0 +1,8 @@
+{
+  "name": "@handy/shared",
+  "type": "module",
+  "main": "customerIds.js",
+  "exports": {
+    ".": "./customerIds.js"
+  }
+}
