@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/https";
 import {defineSecret, defineString} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
+import {isOpaqueCustomerId} from "@handy/shared";
 import {generateInviteToken, normalizePhoneDigits} from "./leadInvite";
 
 const thumbtackWebhookSecret = defineSecret("THUMBTACK_WEBHOOK_SECRET");
@@ -237,6 +238,7 @@ export interface ParsedThumbtackLead {
   name: string;
   phone: string;
   email: string;
+  thumbtackCustomerId: string;
   address: string;
   /** Admin-only customer notes. */
   customerNotes: string;
@@ -276,6 +278,13 @@ export function parseThumbtackLeadPayload(body: unknown): ParsedThumbtackLead {
   const email = (
     str(customer?.email) ||
     str(root.email) ||
+    ""
+  ).trim();
+
+  const thumbtackCustomerId = (
+    str(customer?.customerID) ||
+    str(customer?.customerId) ||
+    str(root.customerID) ||
     ""
   ).trim();
 
@@ -349,6 +358,7 @@ export function parseThumbtackLeadPayload(body: unknown): ParsedThumbtackLead {
     name,
     phone,
     email,
+    thumbtackCustomerId,
     address,
     customerNotes: customerNoteParts.join(" "),
     jobTitle,
@@ -567,8 +577,16 @@ export const thumbtackWebhook = onRequest(
       const phoneNormalized = normalizePhoneDigits(parsed.phone);
       const now = admin.firestore.FieldValue.serverTimestamp();
 
+      if (!parsed.thumbtackCustomerId) {
+        throw new Error("missing_thumbtack_customer_id");
+      }
+      if (!isOpaqueCustomerId(parsed.thumbtackCustomerId)) {
+        throw new Error("invalid_thumbtack_customer_id");
+      }
+
       const batch = db.batch();
-      const custRef = db.collection("customers").doc();
+      const custRef = db.collection("customers")
+        .doc(parsed.thumbtackCustomerId);
       batch.set(custRef, {
         name: parsed.name,
         phone: parsed.phone,
@@ -578,8 +596,9 @@ export const thumbtackWebhook = onRequest(
         status: "preliminary",
         clientUid: null,
         leadInviteToken: token,
+        thumbtackCustomerId: parsed.thumbtackCustomerId,
         createdAt: now,
-      });
+      }, {merge: true});
 
       const jobRef = db.collection("jobs").doc();
       const jobPayload: Record<string, unknown> = {
@@ -618,6 +637,7 @@ export const thumbtackWebhook = onRequest(
         jobNotes: parsed.clientJobNotes,
         source: "thumbtack",
         sourceThumbtackLeadId: parsed.externalId || null,
+        thumbtackCustomerId: parsed.thumbtackCustomerId,
         status: "open",
         clientUid: null,
         bookingRequestId: null,

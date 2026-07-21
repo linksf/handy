@@ -22,6 +22,7 @@ const parsed = parseThumbtackLeadPayload(raw);
 const checks = [
   ["name", parsed.name, "Jeni M"],
   ["phone", parsed.phone, "2344234019"],
+  ["thumbtackCustomerId", parsed.thumbtackCustomerId, "566510215274676232"],
   ["jobTitle", parsed.jobTitle, "Handyman"],
   ["externalId", parsed.externalId, "581798716676227081"],
   ["address includes city", parsed.address.includes("San Francisco"), true],
