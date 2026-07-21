@@ -23,9 +23,10 @@
 
 ## File Structure
 
-- Create: `src/utils/customerIds.js` — opaque ID helper for the owner app.
-- Create: `src/utils/customerIds.test.js` — ID helper tests.
-- Create: `functions/src/customerIds.ts` — same helper for Cloud Functions.
+- Create: `shared/` package (`@handy/shared`) — single opaque ID helper for app + Cloud Functions.
+- Create: `shared/customerIds.js` (+ types if needed).
+- Create: `src/utils/customerIds.test.js` — tests importing `@handy/shared`.
+- Wire: root and `functions/package.json` depend on `"@handy/shared": "file:../shared"` (or `file:./shared`) so Functions deploy bundles the linked package.
 - Create: `functions/src/submitInquiry.ts` — public callable to create inquiry + customer.
 - Create: `src/components/client/ClientGuestInquiry.jsx` — category + forms + thank-you.
 - Create: `src/components/client/ClientSignIn.test.jsx` — Thumbtack ID field + guest CTA.
@@ -39,15 +40,18 @@
 - Modify: `firestore.rules` — `inquiries` owner-only read/update; no client create.
 - Modify: `FIRESTORE_SCHEMA.md` — document customers id scheme + `inquiries`.
 
-### Task 1: Opaque Customer ID Helpers
+### Task 1: Opaque Customer ID Helpers (shared package)
 
 **Files:**
-- Create: `src/utils/customerIds.js`
+- Create: `shared/package.json` (`name: "@handy/shared"`, `"type": "module"`, `"main": "customerIds.js"`, `"exports": { ".": "./customerIds.js" }`)
+- Create: `shared/customerIds.js`
 - Create: `src/utils/customerIds.test.js`
-- Create: `functions/src/customerIds.ts`
+- Modify: root `package.json` — add dependency `"@handy/shared": "file:./shared"`
+- Modify: `functions/package.json` — add dependency `"@handy/shared": "file:../shared"`
+- Run `npm install` in root and `functions/` so the link resolves for Vite and deploy.
 
 **Interfaces:**
-- Produces: `generateOpaqueCustomerId(): string` — returns an 18-digit numeric string.
+- Produces from `@handy/shared`: `generateOpaqueCustomerId(): string` — 18-digit numeric string.
 - Produces: `isOpaqueCustomerId(value: unknown): boolean` — true when value is 15–20 digits.
 
 - [ ] **Step 1: Write failing frontend tests**
@@ -56,7 +60,7 @@ Create `src/utils/customerIds.test.js`:
 
 ```js
 import { describe, expect, test } from "vitest";
-import { generateOpaqueCustomerId, isOpaqueCustomerId } from "./customerIds";
+import { generateOpaqueCustomerId, isOpaqueCustomerId } from "@handy/shared";
 
 describe("customerIds", () => {
   test("generateOpaqueCustomerId returns 18 digits", () => {
@@ -76,17 +80,17 @@ describe("customerIds", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests — expect FAIL (module missing)**
+- [ ] **Step 2: Run tests — expect FAIL (package missing)**
 
 ```bash
 npm test -- src/utils/customerIds.test.js
 ```
 
-Expected: FAIL because `./customerIds` does not exist.
+Expected: FAIL because `@handy/shared` cannot be resolved.
 
-- [ ] **Step 3: Implement helpers**
+- [ ] **Step 3: Implement shared package and wire dependencies**
 
-Create `src/utils/customerIds.js`:
+Create `shared/customerIds.js`:
 
 ```js
 export function generateOpaqueCustomerId() {
@@ -104,7 +108,7 @@ export function isOpaqueCustomerId(value) {
 }
 ```
 
-Create `functions/src/customerIds.ts` with the same logic (TypeScript types on params/returns).
+Create `shared/package.json` as above. Add file deps to root and functions; run installs. Later tasks import `from "@handy/shared"` (TS may need `allowJs` or a thin `.d.ts` in `shared/customerIds.d.ts`).
 
 - [ ] **Step 4: Run tests — expect PASS**
 
@@ -117,8 +121,11 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/utils/customerIds.js src/utils/customerIds.test.js functions/src/customerIds.ts
-git commit -m "feat: add opaque customer id helpers"
+git add shared/package.json shared/customerIds.js shared/customerIds.d.ts \
+  src/utils/customerIds.test.js package.json package-lock.json \
+  functions/package.json functions/package-lock.json
+# Stage only shared-package / test hunks if package.json has unrelated edits (git add -p)
+git commit -m "feat: add shared opaque customer id package"
 ```
 
 ### Task 2: Webhook Uses Thumbtack Customer ID as Doc ID
