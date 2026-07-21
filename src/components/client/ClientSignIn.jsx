@@ -33,19 +33,19 @@ export default function ClientSignIn({
   onGoogleSignIn,
   leadInvite = false,
   onFindLead,
+  onContinueAsGuest,
 }) {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [findName, setFindName] = useState("");
-  const [findPhone, setFindPhone] = useState("");
+  const [thumbtackCustomerId, setThumbtackCustomerId] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [localError, setLocalError] = useState(null);
 
   const stashLeadLookup = () => {
-    if (!onFindLead || !findPhone.trim()) return;
-    onFindLead({ name: findName.trim(), phone: findPhone.trim() });
+    if (!onFindLead || !thumbtackCustomerId.trim()) return;
+    onFindLead({ thumbtackCustomerId: thumbtackCustomerId.trim() });
   };
 
   const handleEmailSubmit = async (e) => {
@@ -127,8 +127,14 @@ export default function ClientSignIn({
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
               Have a Thumbtack request?
             </div>
-            <Input label="Your name" value={findName} onChange={setFindName} placeholder="As on Thumbtack" />
-            <Input label="Phone" type="tel" value={findPhone} onChange={setFindPhone} placeholder="Same number as Thumbtack" />
+            <Input
+              label="Thumbtack Customer ID"
+              value={thumbtackCustomerId}
+              onChange={setThumbtackCustomerId}
+              placeholder="15–20 digit Customer ID"
+              name="thumbtackCustomerId"
+              autoComplete="off"
+            />
             <p style={{ margin: 0, fontSize: 12, color: colors.mmuted, lineHeight: 1.4 }}>
               Enter this before signing in — we'll find your open request after you log in.
             </p>
@@ -212,6 +218,31 @@ export default function ClientSignIn({
             >
               <GoogleIcon />
               {googleBusy ? "Continuing…" : "Continue with Google"}
+            </button>
+          </>
+        )}
+
+        {onContinueAsGuest && (
+          <>
+            <OrDivider />
+            <button
+              type="button"
+              onClick={onContinueAsGuest}
+              disabled={disabled}
+              style={{
+                width: "100%",
+                padding: "12px 20px",
+                fontSize: 15,
+                fontWeight: 600,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                background: "#fff",
+                color: colors.text,
+                cursor: disabled ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Continue as guest
             </button>
           </>
         )}

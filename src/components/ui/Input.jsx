@@ -3,6 +3,7 @@ export default function Input({ label, value, onChange, type = "text", placehold
     <div style={{ marginBottom: 12, ...style }}>
       {label && <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: "#7f8c8d", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>}
       <input
+        aria-label={label}
         id={id}
         name={name}
         type={type}

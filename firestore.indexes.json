@@ -36,7 +36,7 @@
       "collectionGroup": "leadInvites",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "phoneNormalized", "order": "ASCENDING" },
+        { "fieldPath": "thumbtackCustomerId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
       ]
     }

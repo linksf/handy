@@ -15,17 +15,21 @@ export function normalizePhoneDigits(s: unknown): string {
 }
 
 /**
- * After sign-in, client can match an open Thumbtack lead by phone (+ optional name).
+ * After sign-in, client can match an open Thumbtack lead by Customer ID.
  */
 export const matchLeadInvite = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in first.");
   }
-  const phone = normalizePhoneDigits(request.data?.phone);
-  if (phone.length < 10) {
-    throw new HttpsError("invalid-argument", "Enter a valid phone number.");
+  const thumbtackCustomerId = String(
+    request.data?.thumbtackCustomerId || "",
+  ).trim();
+  if (!/^\d{15,20}$/.test(thumbtackCustomerId)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Enter a valid Thumbtack Customer ID.",
+    );
   }
-  const nameHint = String(request.data?.name || "").trim().toLowerCase();
 
   if (!admin.apps.length) {
     admin.initializeApp();
@@ -33,30 +37,23 @@ export const matchLeadInvite = onCall(async (request) => {
   const db = admin.firestore();
 
   const snap = await db.collection("leadInvites")
-    .where("phoneNormalized", "==", phone)
+    .where("thumbtackCustomerId", "==", thumbtackCustomerId)
     .where("status", "==", "open")
-    .limit(10)
+    .limit(5)
     .get();
 
-  let matches = snap.docs;
-  if (nameHint) {
-    matches = matches.filter((d) => {
-      const n = String(d.get("name") || "").trim().toLowerCase();
-      return n.includes(nameHint) || nameHint.includes(n);
-    });
-  }
-
-  if (matches.length === 0) {
+  if (snap.empty) {
     return {found: false};
   }
-  if (matches.length > 1) {
+  if (snap.size > 1) {
     throw new HttpsError(
       "failed-precondition",
-      "Multiple open requests match. Use the link from your message or contact us.",
+      "Multiple open requests match that Customer ID. " +
+        "Use the link from your message or contact us.",
     );
   }
 
-  const doc = matches[0];
+  const doc = snap.docs[0];
   const token = doc.id;
   const uid = request.auth.uid;
 
@@ -80,6 +77,10 @@ export const matchLeadInvite = onCall(async (request) => {
     });
   }
 
-  logger.info("Lead invite matched by phone", {token, uid, phone});
+  logger.info("Lead invite matched by Thumbtack Customer ID", {
+    token,
+    uid,
+    thumbtackCustomerId,
+  });
   return {found: true, token};
 });

@@ -30,6 +30,7 @@ export default function ClientApp() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
   const [ownerGateReady, setOwnerGateReady] = useState(false);
+  const [leadLookupError, setLeadLookupError] = useState(null);
   const pendingLeadLookup = useRef(sessionStorage.getItem("pendingLeadLookup"));
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function ClientApp() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [accountMenuOpen]);
 
-  /** After sign-in, match open Thumbtack lead by phone/name from sign-in form. */
+  /** After sign-in, match an open Thumbtack lead by Customer ID. */
   useEffect(() => {
     if (!user?.uid || !ownerGateReady || route.kind === "lead") return;
     const raw = pendingLeadLookup.current;
@@ -82,20 +83,27 @@ export default function ClientApp() {
     let cancelled = false;
     (async () => {
       try {
+        setLeadLookupError(null);
         const payload = JSON.parse(raw);
         const matchLead = httpsCallable(functions, "matchLeadInvite");
         const res = await matchLead({
-          phone: payload.phone,
-          name: payload.name,
+          thumbtackCustomerId: payload.thumbtackCustomerId,
         });
         if (cancelled) return;
         if (res.data?.found && res.data?.token) {
           const url = `/book/lead/${encodeURIComponent(res.data.token)}`;
           window.history.pushState({}, "", url);
           setRoute(parseClientRoute(url));
+        } else {
+          setLeadLookupError("No open request found for that Customer ID.");
         }
       } catch (err) {
         console.error("Lead lookup failed:", err);
+        if (!cancelled) {
+          setLeadLookupError(
+            err?.message || "We couldn't look up that Customer ID. Try again.",
+          );
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -324,6 +332,24 @@ export default function ClientApp() {
           </>
         )}
       </nav>
+
+      {leadLookupError && (
+        <p
+          role="alert"
+          style={{
+            margin: "16px auto 0",
+            maxWidth: 760,
+            padding: "12px 16px",
+            border: `1px solid ${colors.danger}`,
+            borderRadius: 8,
+            background: "#fff",
+            color: colors.danger,
+            fontSize: 14,
+          }}
+        >
+          {leadLookupError}
+        </p>
+      )}
 
       {showLeadFlow ? (
         <ClientLeadFlow
