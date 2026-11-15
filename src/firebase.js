@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
+import { offlineEnabled } from "./utils/offlinePreference";
 import { initAuthRecaptcha } from "./auth/initRecaptcha";
 
 const firebaseConfig = {
@@ -34,7 +35,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export { app };
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = offlineEnabled()
+  ? initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) })
+  : getFirestore(app);
 export const functions = getFunctions(app);
 
 /** Resolves when reCAPTCHA Enterprise + Auth config are ready (or failed softly). */

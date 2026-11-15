@@ -55,6 +55,24 @@ test("changes status from the Job Details card", async () => {
   );
 
   await waitFor(() => {
-    expect(updateJob).toHaveBeenCalledWith({ ...job, status: "In Progress" });
+    expect(updateJob).toHaveBeenCalledWith({ id: job.id, status: "In Progress" });
   });
+});
+
+test("saves separate complimentary and crew labor rates on an existing job", () => {
+  const saveJob = vi.fn();
+  render(<JobDetailsTab job={{id:"job-2",title:"Work",status:"Draft",hours:4,hourlyRate:75}}
+    saveJob={saveJob} ctx={{data:{customers:[]},jobRevenue:()=>300,updateJob:vi.fn()}}
+    costBreakdown={{total:0}} profit={300} />);
+  fireEvent.click(screen.getAllByRole("button", {name:"Edit"}).at(-1));
+  fireEvent.click(screen.getByRole("button", {name:"Add planning"}));
+  fireEvent.change(screen.getByRole("spinbutton", {name:"Labor hours 1"}), {target:{value:"1"}});
+  fireEvent.click(screen.getByRole("button", {name:"Add two-person crew"}));
+  fireEvent.change(screen.getByRole("spinbutton", {name:"Labor hours 2"}), {target:{value:"2"}});
+  fireEvent.click(screen.getByRole("button", {name:"Save"}));
+  expect(saveJob).toHaveBeenCalledWith(expect.objectContaining({laborEntries:[
+    expect.objectContaining({name:"Planning",hours:"1",hourlyRate:"0"}), expect.objectContaining({name:"Two-person crew",hours:"2",hourlyRate:"100"})
+  ]}));
+  expect(saveJob.mock.calls[0][0]).not.toHaveProperty("hours");
+  expect(saveJob.mock.calls[0][0]).not.toHaveProperty("hourlyRate");
 });

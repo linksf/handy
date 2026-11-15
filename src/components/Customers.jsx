@@ -1,5 +1,7 @@
 import Card from "./ui/Card";
 import Btn from "./ui/Btn";
+import Badge from "./ui/Badge";
+import { leadBadgeColor, isPreliminaryCustomer } from "../constants";
 
 export default function Customers({ ctx }) {
   const { data, nav } = ctx;
@@ -14,10 +16,15 @@ export default function Customers({ ctx }) {
       ) : (
         data.customers.map(c => (
           <Card key={c.id} style={{ marginBottom: 10, cursor: "pointer" }}>
-            <div onClick={() => nav("customer/:id", c.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div onClick={() => nav("customer/:id", c.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>{c.name}</div>
-                <div style={{ fontSize: 13, color: "#718096" }}>{c.phone} · {c.address}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 16 }}>{c.name}</span>
+                  {isPreliminaryCustomer(c) && (
+                    <Badge text="New lead" color={leadBadgeColor.bg} textColor={leadBadgeColor.tc} />
+                  )}
+                </div>
+                <div style={{ fontSize: 13, color: "#718096" }}>{[c.phone, c.address].filter(Boolean).join(" · ")}</div>
               </div>
               <span style={{ color: "#a0aec0" }}>›</span>
             </div>

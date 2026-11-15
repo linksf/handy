@@ -2,6 +2,8 @@ import { Component, StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import ClientApp from "./components/client/ClientApp";
+import PwaSettings, { OfflineNotice } from "./components/PwaSettings";
+import { startPwa, watchInstallPrompt } from "./utils/pwa";
 import { authRecaptchaReady } from "./firebase";
 
 function isAdminPath(pathname) {
@@ -64,34 +66,25 @@ function Root() {
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
-  return isAdminPath(path) ? <App /> : <ClientApp />;
+  return <>
+    <OfflineNotice />
+    {isAdminPath(path) ? <App /> : <ClientApp />}
+    <PwaSettings />
+    <footer style={{ padding: "20px 24px", textAlign: "center", background: "#ecf0f1", color: "#232323", fontFamily: "'Futura', 'Trebuchet MS', sans-serif", fontSize: 14 }}>
+      <nav aria-label="Legal"><a href="/privacy" style={{ color: "#206493", marginRight: 24 }}>Privacy Policy</a><a href="/terms" style={{ color: "#206493" }}>Terms of Service</a></nav>
+    </footer>
+  </>;
 }
 
-authRecaptchaReady.finally(() => {
-  createRoot(document.getElementById("root")).render(
-    <StrictMode>
-      <RootErrorBoundary>
-        <Root />
-      </RootErrorBoundary>
-    </StrictMode>
-  );
-});
+watchInstallPrompt();
+startPwa();
 
-if ("serviceWorker" in navigator) {
-  if (import.meta.env.DEV) {
-    // Dev: stale cached JS from the PWA service worker breaks Vite HMR and causes
-    // "Invalid hook call" (mixed React copies). Clear any prior registration.
-    navigator.serviceWorker.getRegistrations().then((regs) => {
-      regs.forEach((r) => r.unregister());
-    });
-    if (typeof caches !== "undefined") {
-      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
-    }
-  } else {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js").catch((error) => {
-        console.error("Service worker registration failed:", error);
-      });
-    });
-  }
+// Authentication restores from the SDK cache independently of reCAPTCHA setup.
+void authRecaptchaReady;
+createRoot(document.getElementById("root")).render(
+  <StrictMode><RootErrorBoundary><Root /></RootErrorBoundary></StrictMode>
+);
+
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistration("/").then(registration => registration?.unregister());
 }

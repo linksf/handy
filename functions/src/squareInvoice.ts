@@ -5,6 +5,7 @@ import * as logger from "firebase-functions/logger";
 import {
   InvoiceDeliveryMethod,
 } from "square";
+import {persistPayment} from "./leadFinance";
 import {isOwnerAuth} from "./ownerAuth";
 import {buildJobInvoiceLines, totalCentsFromLines} from "./jobInvoiceLines";
 import {
@@ -102,6 +103,7 @@ async function syncInvoiceToFirestore(opts: {
   clientUid: string;
   customerId: string;
   squareInvoiceId: string;
+  squareOrderId: string;
   publicUrl: string;
   amountCents: number;
   squareStatus: string;
@@ -115,6 +117,7 @@ async function syncInvoiceToFirestore(opts: {
     clientUid: opts.clientUid || "",
     customerId: opts.customerId,
     squareInvoiceId: opts.squareInvoiceId,
+    squareOrderId: opts.squareOrderId,
     publicUrl: opts.publicUrl,
     amountCents: opts.amountCents,
     status,
@@ -123,6 +126,7 @@ async function syncInvoiceToFirestore(opts: {
   });
   batch.update(db.collection("jobs").doc(opts.jobId), {
     squareInvoiceId: opts.squareInvoiceId,
+    squareOrderId: opts.squareOrderId,
     squarePublicUrl: opts.publicUrl,
     squareInvoiceStatus: status,
     firestoreInvoiceId: invoiceRef.id,
@@ -149,7 +153,7 @@ async function applyInvoicePaymentUpdate(
   const data = doc.data();
   const status = mapSquareStatus(squareStatus);
   const amountCents = Number(data.amountCents) || 0;
-  const {payStatus, amountPaid} = mapJobPayStatus(status, amountCents, amountPaidCents);
+  const {payStatus} = mapJobPayStatus(status, amountCents, amountPaidCents);
 
   const batch = db.batch();
   batch.update(doc.ref, {
@@ -160,8 +164,7 @@ async function applyInvoicePaymentUpdate(
   if (data.jobId) {
     batch.update(db.collection("jobs").doc(data.jobId), {
       squareInvoiceStatus: status,
-      payStatus,
-      amountPaid,
+      ...(status === "unpaid" ? {payStatus} : {}),
     });
   }
   await batch.commit();
@@ -287,6 +290,7 @@ export const createSquareInvoice = onCall(
       clientUid: String(job.bookingClientUid || ""),
       customerId,
       squareInvoiceId: draft.id,
+      squareOrderId: orderId,
       publicUrl,
       amountCents,
       squareStatus: published?.status || "UNPAID",
@@ -296,6 +300,7 @@ export const createSquareInvoice = onCall(
       alreadyExists: false,
       publicUrl,
       squareInvoiceId: draft.id,
+      squareOrderId: orderId,
       firestoreInvoiceId: saved.firestoreInvoiceId,
       status: saved.status,
       amountCents,
@@ -322,7 +327,7 @@ function verifySquareWebhookSignature(
 
 export const squareWebhook = onRequest(
   {
-    secrets: [squareWebhookSignatureKey],
+    secrets: [squareWebhookSignatureKey, squareAccessToken],
   },
   async (req, res) => {
     if (req.method !== "POST") {
@@ -347,6 +352,8 @@ export const squareWebhook = onRequest(
       }
     }
 
+    if (!sigKey) { res.status(503).send("Webhook verification unavailable"); return; }
+
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(rawBody) as Record<string, unknown>;
@@ -360,6 +367,36 @@ export const squareWebhook = onRequest(
     const obj = data?.object as Record<string, unknown> | undefined;
     const invoice = obj?.invoice as Record<string, unknown> | undefined;
     const squareInvoiceId = String(invoice?.id || data?.id || "");
+
+    // Record actual completed payments/refunds; source IDs deduplicate retries.
+    try {
+      const invoiceOrder = String(invoice?.order_id || invoice?.orderId || "");
+      const paymentObject = obj?.payment as Record<string, any> | undefined;
+      const refundObject = obj?.refund as Record<string, any> | undefined;
+      let orderId = invoiceOrder || String(paymentObject?.order_id || paymentObject?.orderId || refundObject?.order_id || refundObject?.orderId || "");
+      if (!orderId && refundObject?.payment_id) {
+        const payment = await getSquareClient().payments.get({paymentId: String(refundObject.payment_id)});
+        orderId = payment.payment?.orderId || "";
+      }
+      if (orderId) {
+        let matches = await db.collection("invoices").where("squareOrderId", "==", orderId).limit(1).get();
+        if (matches.empty && squareInvoiceId) matches = await db.collection("invoices").where("squareInvoiceId", "==", squareInvoiceId).limit(1).get();
+        if (!matches.empty) {
+          const jobId = matches.docs[0].get("jobId");
+          const order = await getSquareClient().orders.get({orderId});
+          for (const tender of order.order?.tenders || []) {
+            if (!tender.paymentId) continue;
+            const response = await getSquareClient().payments.get({paymentId: tender.paymentId}); const payment = response.payment;
+            if (!payment || payment.status !== "COMPLETED" || !payment.id || !payment.amountMoney?.amount) continue;
+            await persistPayment(db, {jobId, source: "square", sourceId: payment.id, amountCents: Number(payment.amountMoney.amount), occurredAt: payment.updatedAt || payment.createdAt || null, method: "Square"});
+            for (const refundId of payment.refundIds || []) {
+              const response = await getSquareClient().refunds.get({refundId}); const refund = response.refund;
+              if (refund?.status === "COMPLETED" && refund.id) await persistPayment(db, {jobId, source: "square-refund", sourceId: refund.id, amountCents: -Number(refund.amountMoney.amount), occurredAt: refund.updatedAt || refund.createdAt || null, method: "Square refund"});
+            }
+          }
+        }
+      }
+    } catch (err) { logger.error("Square payment ledger failed", {error: err instanceof Error ? err.name : "unknown"}); res.status(500).send("Payment synchronization failed"); return; }
 
     if (
       squareInvoiceId &&

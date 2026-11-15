@@ -1,12 +1,13 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { handyPwaBuild } from "./scripts/pwa/build.mjs";
 import react from "@vitejs/plugin-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), handyPwaBuild()],
   appType: "spa",
   resolve: {
     // Avoid two React copies (hooks throw: "Cannot read properties of null (reading 'useState')").

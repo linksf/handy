@@ -1,3 +1,4 @@
+import {normalizeToolName, toolDocumentId} from "../src/utils/toolNames.js";
 #!/usr/bin/env node
 /**
  * Seeds handyman task templates into Firestore `tasks` with tool assignments.
@@ -61,7 +62,7 @@ initAdmin();
 const db = admin.firestore();
 
 function normName(s) {
-  return String(s || "").trim().toLowerCase();
+  return normalizeToolName(s);
 }
 
 async function loadTools() {
@@ -84,13 +85,14 @@ async function ensureTools(byName) {
       added++;
       continue;
     }
-    const ref = await db.collection("tools").add({
-      name: t.name,
-      category: t.category || "",
+    const ref = db.collection("tools").doc(toolDocumentId(t.name));
+    const created = await db.runTransaction(async transaction => {
+      if ((await transaction.get(ref)).exists) return false;
+      transaction.set(ref, {name:t.name, category:t.category || ""});
+      return true;
     });
     byName.set(normName(t.name), { id: ref.id, name: t.name, category: t.category || "" });
-    console.log(`Added tool: ${t.name}`);
-    added++;
+    if (created) { console.log(`Added tool: ${t.name}`); added++; }
   }
   return added;
 }

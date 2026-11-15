@@ -16,6 +16,8 @@ import {
   projectAvailabilityToLocalDay,
   splitTimeWindowIntoSlotChunks,
 } from "../utils/bookingSlots";
+import { displayDay, displayPacificTime, pacificDay } from "../utils/adminDates";
+import { bookingRequestRangeMs, findConflictingBooking } from "../utils/bookingConflicts";
 import Card from "./ui/Card";
 import Btn from "./ui/Btn";
 import Input from "./ui/Input";
@@ -52,7 +54,7 @@ function duplicateBlockExists(existingRows, start, end, slotMins) {
 
 function formatTs(ts) {
   if (!ts?.toDate) return "—";
-  return ts.toDate().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return `${displayDay(pacificDay(ts))} · ${displayPacificTime(ts)}`;
 }
 
 function formatDayHeaderFromKey(k) {
@@ -113,12 +115,12 @@ export default function SchedulingManager({ ctx }) {
 
   const requestsSorted = useMemo(() => {
     return bookingRequests
-      .filter((r) => r.status === "pending")
+      .filter((r) => r.status === "pending" && (!ctx.viewParam || ctx.viewParam === r.id))
       .sort(
         (a, b) =>
           (a.requestedStart?.toMillis?.() || 0) - (b.requestedStart?.toMillis?.() || 0)
       );
-  }, [bookingRequests]);
+  }, [bookingRequests, ctx.viewParam]);
 
   const availableByDay = useMemo(() => {
     const onlyOpen = availability.filter((row) => row.status === "open");
@@ -418,86 +420,54 @@ export default function SchedulingManager({ ctx }) {
   };
 
   const bookingRequestsSection = (
-    <Card style={{ marginBottom: 24 }}>
-      <h3 style={{ marginTop: 0, color: "#232323" }}>Pending booking requests</h3>
-      <p style={{ margin: "0 0 16px", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
-        <strong>Approve</strong> creates the customer (or matches by phone), schedules a job with the client&apos;s
-        selected tasks, and links it here. Use <strong>Open job</strong> to review tasks and the packing checklist.
-      </p>
+    <section className="queue-panel" style={{ marginBottom: 24 }} aria-labelledby="pending-bookings">
+      <h2 id="pending-bookings">Pending booking requests</h2>
       {requestsSorted.length === 0 ? (
-        <p style={{ color: "#7f8c8d", margin: 0 }}>No pending requests.</p>
+        <p className="queue-empty">No pending requests.</p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "2px solid #bdc3c7" }}>
-                <th style={{ padding: "8px 6px" }}>When</th>
-                <th style={{ padding: "8px 6px" }}>Title</th>
-                <th style={{ padding: "8px 6px" }}>Location</th>
-                <th style={{ padding: "8px 6px" }}>Phone</th>
-                <th style={{ padding: "8px 6px" }} />
-              </tr>
-            </thead>
-            <tbody>
-              {requestsSorted.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "1px solid #ecf0f1", verticalAlign: "top" }}>
-                  <td style={{ padding: "10px 6px", whiteSpace: "nowrap" }}>
-                    {formatTs(r.requestedStart)}
-                    <div style={{ fontSize: 12, color: "#7f8c8d" }}>to {formatTs(r.requestedEnd)}</div>
-                  </td>
-                  <td style={{ padding: "10px 6px", maxWidth: 200 }}>
-                    <div style={{ fontWeight: 600 }}>{r.title}</div>
-                    {r.clientName ? (
-                      <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{r.clientName}</div>
-                    ) : null}
-                    {r.notes ? <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{r.notes}</div> : null}
-                    {(r.requestedTasks || []).length > 0 ? (
-                      <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
-                        Tasks: {(r.requestedTasks || []).map((t) => t.name).join(", ")}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td style={{ padding: "10px 6px" }}>{r.location}</td>
-                  <td style={{ padding: "10px 6px" }}>{r.phone}</td>
-                  <td style={{ padding: "10px 6px" }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <Btn
-                        small
-                        onClick={() => setRequestStatus(r, "approved")}
-                        disabled={actionBusyId === r.id}
-                      >
-                        {actionBusyId === r.id ? "…" : "Approve"}
-                      </Btn>
-                      <Btn
-                        small
-                        danger
-                        onClick={() => setRequestStatus(r, "declined")}
-                        disabled={actionBusyId === r.id}
-                      >
-                        Decline
-                      </Btn>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="queue-rows">
+          {requestsSorted.map(request => {
+            const { start, end } = bookingRequestRangeMs(request);
+            const conflict = start && end && findConflictingBooking(bookingRequests, start, end, { excludeId: request.id });
+            return (
+              <li key={request.id} className="queue-row">
+                <div className="queue-info">
+                  <span className={`admin-status admin-status--${conflict ? "overdue" : "decision"}`}>
+                    {conflict ? `Overlaps ${conflict.title || "another request"}` : "Pending booking"}
+                  </span>
+                  <strong>{request.title}</strong>
+                  <span className="queue-meta">{formatTs(request.requestedStart)} to {formatTs(request.requestedEnd)}</span>
+                  <span className="queue-meta">{[request.clientName, request.location, request.phone].filter(Boolean).join(" · ")}</span>
+                  {request.notes && <span className="queue-meta">{request.notes}</span>}
+                  {!!request.requestedTasks?.length && <span className="queue-meta">
+                    Tasks: {request.requestedTasks.map(task => task.name).join(", ")}
+                  </span>}
+                </div>
+                <div className="queue-actions">
+                  <Btn onClick={() => setRequestStatus(request, "approved")} disabled={actionBusyId === request.id}>
+                    {actionBusyId === request.id ? "Approving…" : "Approve"}
+                  </Btn>
+                  <button type="button" className="admin-quiet" disabled={actionBusyId === request.id}
+                    onClick={() => setRequestStatus(request, "declined")}>Decline</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </Card>
+    </section>
   );
 
   return (
     <div>
-      <h2 style={{ marginTop: 0, color: "#232323", fontWeight: 700 }}>Scheduling</h2>
-      <p style={{ color: "#555", marginTop: 0, marginBottom: 20, lineHeight: 1.5 }}>
-        Add bookable windows and review client requests. Clients only see blocks marked open.         Public link:{" "}
-        <a href="/" style={{ color: "#2980b9", fontWeight: 600 }}>
-          home (/)
-        </a>
-      </p>
-
+      <h2 style={{ marginTop: 0, color: "#232323", fontWeight: 700 }}>{ctx.viewParam ? "Booking request" : "Availability"}</h2>
+      {ctx.viewParam && <Btn onClick={() => nav("scheduling")} style={{ marginBottom: 12 }}>All booking requests</Btn>}
+      {!ctx.viewParam && <p style={{ color: "#555", marginTop: 0, marginBottom: 20, lineHeight: 1.5 }}>
+        Manage bookable windows and review client requests. <a href="/">Public booking page</a>
+      </p>}
       {bookingRequestsSection}
+
+      {!ctx.viewParam && <>
 
       <Card style={{ marginBottom: 24 }}>
         <h3 style={{ marginTop: 0, color: "#232323" }}>Availability blocks</h3>
@@ -546,13 +516,14 @@ export default function SchedulingManager({ ctx }) {
               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: "#7f8c8d", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 Include only these weekdays
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div className="weekday-controls">
                 {WEEKDAY_TOGGLE.map(({ d, label: lbl }) => {
                   const on = addRepeatWeekdays[d];
                   return (
                     <button
                       key={d}
                       type="button"
+                      aria-pressed={on}
                       onClick={() => toggleAddWeekday(d)}
                       style={{
                         padding: "8px 12px",
@@ -663,13 +634,14 @@ export default function SchedulingManager({ ctx }) {
             <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: "#7f8c8d", textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Include these weekdays
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div className="weekday-controls">
               {WEEKDAY_TOGGLE.map(({ d, label }) => {
                 const on = copyWeekdays[d];
                 return (
                   <button
                     key={d}
                     type="button"
+                    aria-pressed={on}
                     onClick={() => toggleWeekday(d)}
                     style={{
                       padding: "8px 12px",
@@ -799,6 +771,7 @@ export default function SchedulingManager({ ctx }) {
           </div>
         )}
       </Card>
+      </>}
     </div>
   );
 }

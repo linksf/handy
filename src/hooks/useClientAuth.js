@@ -1,3 +1,4 @@
+import { unsubscribeDevice } from "../utils/pwa";
 import { useState, useEffect, useCallback } from "react";
 import {
   createUserWithEmailAndPassword,
@@ -19,19 +20,8 @@ export function useClientAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsub = () => {};
-    (async () => {
-      try {
-        await getRedirectResult(auth);
-      } catch (err) {
-        console.error("Client Google redirect sign-in error:", err);
-      }
-      unsub = onAuthStateChanged(auth, (u) => {
-        setUser(u);
-        setLoading(false);
-      });
-    })();
-    return () => unsub();
+    void getRedirectResult(auth).catch(err => console.warn("Client Google redirect sign-in", err.code));
+    return onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
   }, []);
 
   const signIn = useCallback(async (email, password) => {
@@ -63,7 +53,11 @@ export function useClientAuth() {
     }
   }, []);
 
-  const signOut = useCallback(() => firebaseSignOut(auth), []);
+  const signOut = useCallback(async () => {
+    try { await unsubscribeDevice(); }
+    catch { /* Generic push messages cannot expose account records after sign-out. */ }
+    await firebaseSignOut(auth);
+  }, []);
 
   return {
     user,

@@ -1,4 +1,9 @@
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { useState } from "react";
+import { pacificDay } from "../utils/adminDates";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
 import Card from "./ui/Card";
 import Btn from "./ui/Btn";
 import { uid } from "../utils";
@@ -6,68 +11,47 @@ import { useMobile } from "../hooks/useMobile";
 
 const EXPENSE_TYPES = ["Transportation", "Referral Fee", "Subcontractor", "Permit", "Dump Fee", "Equipment Rental", "Other"];
 
-const empty = { type: "", name: "", amount: "", datePaid: "", reimbursable: false };
+const empty = () => ({ type: "Other", name: "", amount: "", datePaid: pacificDay(new Date()), reimbursable: false });
 
 export default function ExpensesTab({ job, saveJob }) {
   const isMobile = useMobile();
   const [form, setForm] = useState(empty);
+  const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+  const [editDates, setEditDates] = useState({});
+  const [feedback, setFeedback] = useState("");
   const f = (k) => (v) => setForm(x => ({ ...x, [k]: v }));
 
-  const addExpense = () => {
-    if (!form.name.trim() || !form.amount) return;
-    saveJob({ expenses: [...(job.expenses || []), { id: uid(), ...form }] });
-    setForm(empty);
+  const valid = Number(form.amount) > 0 && !!form.datePaid;
+  const addExpense = async () => {
+    if (!valid || busy) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      await saveJob({ expenses: [...(job.expenses || []), { ...form, id: uid(), name: form.name.trim() || form.type }] });
+      setForm(empty());
+      setFeedback("Expense saved.");
+    } catch { setFeedback("Could not save expense. Your entry is still here."); }
+    finally { setBusy(false); }
   };
 
-  const removeExpense = (id) =>
-    saveJob({ expenses: job.expenses.filter(e => e.id !== id) });
+  const removeExpense = async id => {
+    try { await saveJob({ expenses: job.expenses.filter(e => e.id !== id || e.leadCostLeadId) }); }
+    catch { setFeedback("Could not remove expense."); }
+  };
 
   const expenses = job.expenses || [];
 
   return (
     <div>
+      <p>Managed Thumbtack fees are edited on the linked lead. They are counted once in reports.</p>
       <Card style={{ marginBottom: 16 }}>
         <div style={{ fontWeight: 600, marginBottom: 12 }}>Add Expense</div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#7f8c8d" }}>Type</div>
-            <select
-              value={form.type}
-              onChange={e => f("type")(e.target.value)}
-              style={{ width: "100%", border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14, background: "#fff" }}
-            >
-              <option value="">-- Select Type --</option>
-              {EXPENSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#7f8c8d" }}>Name *</div>
-            <input
-              value={form.name}
-              onChange={e => f("name")(e.target.value)}
-              placeholder="e.g. Gas to job site"
-              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14 }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#7f8c8d" }}>Amount ($) *</div>
-            <input
-              value={form.amount}
-              onChange={e => f("amount")(e.target.value)}
-              type="number"
-              placeholder="0.00"
-              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14 }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#7f8c8d" }}>Date Paid</div>
-            <input
-              value={form.datePaid}
-              onChange={e => f("datePaid")(e.target.value)}
-              type="date"
-              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14 }}
-            />
-          </div>
+          <Input label="Amount ($)" type="number" value={form.amount} onChange={f("amount")} placeholder="0.00" />
+          <Select label="Category" value={form.type} onChange={f("type")} options={EXPENSE_TYPES} />
+          <Input label="Name (optional)" value={form.name} onChange={f("name")} />
+          <Input label="Date paid" type="date" value={form.datePaid} onChange={f("datePaid")} />
         </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer", fontSize: 14 }}>
           <input
@@ -79,16 +63,17 @@ export default function ExpensesTab({ job, saveJob }) {
           Reimbursable by customer
         </label>
         <div style={{ marginTop: 12 }}>
-          <Btn onClick={addExpense}>Add Expense</Btn>
+          <Btn disabled={!valid || busy} onClick={addExpense}>{busy ? "Saving…" : "Save expense"}</Btn>
+          {feedback && <p role="status">{feedback}</p>}
         </div>
       </Card>
 
       {expenses.length === 0 ? (
         <Card><p style={{ color: "#a0aec0", textAlign: "center", margin: 0 }}>No expenses recorded yet.</p></Card>
       ) : (
-        expenses.map(e => (
+        expenses.map((e, index) => (
           <Card key={e.id} style={{ marginBottom: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div id={`expense-cost-${e.id || index}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <div style={{ fontWeight: 600 }}>{e.name}</div>
                 <div style={{ fontSize: 12, color: "#7f8c8d", marginTop: 2 }}>
@@ -105,9 +90,33 @@ export default function ExpensesTab({ job, saveJob }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontWeight: 700 }}>${(parseFloat(e.amount) || 0).toFixed(2)}</span>
-                <Btn small danger onClick={() => removeExpense(e.id)}>Remove</Btn>
+                {!e.leadCostLeadId && e.id !== "thumbtack-lead-fee" && <Btn small danger onClick={() => removeExpense(e.id)}>Remove</Btn>}
               </div>
             </div>
+            {e.receiptId && <button type="button" className="admin-quiet" onClick={async () => {
+              try {
+                const record = (await getDoc(doc(db, "adminReceipts", e.receiptId))).data();
+                if (!record) throw new Error("Receipt unavailable.");
+                setReceipt({ ...record, expense: index });
+              } catch { setFeedback("Could not open the receipt."); }
+            }}>View receipt</button>}
+            {receipt?.expense === index && <div className="billing-review">
+              <p>{receipt.merchant} · {receipt.date} · ${(receipt.totalCents / 100).toFixed(2)} receipt total</p>
+              {receipt.photo?.startsWith("data:image/jpeg;base64,") && <img className="change-photo" src={receipt.photo} alt="Saved receipt" />}
+              <Btn onClick={() => setReceipt(null)}>Close receipt</Btn>
+            </div>}
+            {!e.leadCostLeadId && e.id !== "thumbtack-lead-fee" && <details open={!e.datePaid || undefined}>
+              <summary>{e.datePaid ? "Correct expense date" : "Add missing expense date"}</summary>
+              <Input label={`Date for ${e.name}`} type="date" value={editDates[index] ?? e.datePaid ?? ""} onChange={value => setEditDates(previous => ({ ...previous, [index]: value }))} />
+              <Btn disabled={!editDates[index] || busy} onClick={async () => {
+                setBusy(true);
+                try {
+                  await saveJob({ expenses: expenses.map((row, rowIndex) => rowIndex === index ? { ...row, datePaid: editDates[index] } : row) });
+                  setFeedback("Expense date saved.");
+                } catch { setFeedback("Could not save expense date."); }
+                finally { setBusy(false); }
+              }}>Save expense date</Btn>
+            </details>}
           </Card>
         ))
       )}

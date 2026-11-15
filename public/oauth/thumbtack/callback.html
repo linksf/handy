@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <meta name="referrer" content="no-referrer">
+    <script>
+      const query = new URLSearchParams(location.search);
+      const result = new URLSearchParams({thumbtack: "1"});
+      if (query.has("error")) {
+        result.set("error", "denied");
+      } else if (query.get("code") && query.get("state")) {
+        result.set("code", query.get("code"));
+        result.set("state", query.get("state"));
+      }
+      if (result.has("error") || result.has("code")) {
+        location.replace("/admin/leads#" + result);
+      }
+    </script>
+    <title>Thumbtack connection | Handy</title>
+  </head>
+  <body>
+    <main>
+      <h1>Thumbtack connection</h1>
+      <p>Start the connection from Handy’s Leads page.</p>
+      <p><a href="/admin/leads">Return to Leads</a></p>
+    </main>
+  </body>
+</html>

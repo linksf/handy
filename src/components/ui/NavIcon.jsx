@@ -77,7 +77,7 @@ export default function NavIcon({ name, size = 22, color = "currentColor" }) {
       strokeLinejoin="round"
       style={{ display: "block", flexShrink: 0 }}
     >
-      {paths[name]}
+      {paths[name] || paths[name === "leads" ? "inquiries" : "dashboard"]}
     </svg>
   );
 }

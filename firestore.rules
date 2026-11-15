@@ -32,6 +32,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    match /adminReceipts/{receiptId} { allow read, create: if isOwner(); }
+
+    match /adminIntake/{id} {
+      allow read, create, update: if isOwner();
+      match /history/{eventId} {
+        allow read, create: if isOwner();
+      }
+    }
+
+    match /leads/{id} { allow read: if isOwner(); allow update: if isOwner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"]); }
+    match /leadCosts/{id} { allow read: if isOwner(); }
+    match /payments/{id} { allow read: if isOwner(); }
+    match /leadCleanupReview/{id} { allow read: if isOwner(); }
+    match /thumbtackConversations/{id} { allow read: if isOwner(); match /events/{event} { allow read: if isOwner(); } }
     match /customers/{docId} {
       allow read, write: if isOwner();
     }
@@ -46,13 +60,24 @@ service cloud.firestore {
       allow read, write: if isOwner();
     }
 
+    match /jobs/{jobId}/privateRecords/{recordId} {
+      allow read, create, update: if isOwner();
+    }
+
+    match /jobs/{jobId}/adminHistory/{eventId} {
+      allow read, create: if isOwner();
+    }
+
     /** Time tracking; parent job rules do not cascade to subcollections. */
     match /jobs/{jobId}/workSessions/{sessionId} {
       allow read, write: if isOwner();
     }
 
     match /tools/{docId} {
-      allow read, write: if isOwner();
+      allow read, delete: if isOwner();
+      // Older app tabs used random IDs and could recreate duplicate entries.
+      allow create: if isOwner() && docId.matches("^tool_.*");
+      allow update: if isOwner() && request.resource.data.name == resource.data.name;
     }
 
     match /tasks/{docId} {

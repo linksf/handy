@@ -1,4 +1,4 @@
-/* eslint-disable require-jsdoc, valid-jsdoc */
+/* eslint-disable require-jsdoc, valid-jsdoc, max-len */
 import {timingSafeEqual} from "crypto";
 import * as admin from "firebase-admin";
 import {onRequest} from "firebase-functions/https";
@@ -6,6 +6,9 @@ import {defineSecret, defineString} from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import {generateOpaqueCustomerId, isOpaqueCustomerId} from "@handy/shared";
 import {generateInviteToken, normalizePhoneDigits} from "./leadInvite";
+import {parseIncomingEvent} from "./leadAutomationCore";
+import {ingestLead} from "./leadWorkflow";
+import {saveLeadEvent} from "./leadAutomationStore";
 
 const thumbtackWebhookSecret = defineSecret("THUMBTACK_WEBHOOK_SECRET");
 const thumbtackWebhookUser = defineString("THUMBTACK_WEBHOOK_USER", {
@@ -503,7 +506,7 @@ function isAuthorized(req: {
     if (!basic.user.trim() || !user || safeEqual(basic.user.trim(), user)) {
       return true;
     }
-    // Password matches — accept even if username differs (Thumbtack config drift).
+    // Accept matching passwords despite username configuration drift.
     logger.warn("Thumbtack webhook: password ok, username mismatch", {
       receivedUser: basic.user.trim(),
       expectedUser: user,
@@ -542,7 +545,7 @@ export const thumbtackWebhook = onRequest(
     if (req.method === "GET") {
       res.status(200).json({
         ok: true,
-        hint: "POST Thumbtack NegotiationCreatedV4 JSON to this URL.",
+        hint: "POST NegotiationCreatedV4 or MessageCreatedV4 JSON here.",
         auth: [
           "Basic auth (username + THUMBTACK_WEBHOOK_SECRET password)",
           "x-thumbtack-webhook-secret header",
@@ -590,130 +593,105 @@ export const thumbtackWebhook = onRequest(
     const db = admin.firestore();
 
     try {
-      const parsed = parseThumbtackLeadPayload(body);
-
-      if (parsed.externalId) {
-        const dup = await db.collection("jobs")
-          .where("sourceThumbtackLeadId", "==", parsed.externalId)
-          .limit(1)
-          .get();
-        if (!dup.empty) {
-          const doc = dup.docs[0];
-          const jobId = doc.id;
-          const customerId = str(doc.get("customerId"));
-          const inviteToken = str(doc.get("leadInviteToken"));
-          logger.info("Thumbtack webhook duplicate lead id", {
-            jobId,
-            customerId,
-            externalId: parsed.externalId,
-          });
-          res.status(200).json({
-            ok: true,
-            duplicate: true,
-            customerId: customerId || null,
-            jobId,
-            inviteUrl: inviteToken ? leadInviteUrl(inviteToken) : null,
-          });
-          return;
-        }
+      let incoming;
+      try {
+        incoming = parseIncomingEvent(body);
+      } catch {
+        res.status(400).json({ok: false, error: "invalid_thumbtack_event"});
+        return;
       }
-
-      const token = generateInviteToken();
-      const phoneNormalized = normalizePhoneDigits(parsed.phone);
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      const hasValidThumbtackCustomerId =
-        isOpaqueCustomerId(parsed.thumbtackCustomerId);
-      const customerId = resolveThumbtackCustomerId(
-        parsed.thumbtackCustomerId,
-      );
-      if (!hasValidThumbtackCustomerId) {
-        logger.warn(
-          "Thumbtack webhook generated customer ID for invalid source ID",
-          {
-            externalId: parsed.externalId,
-            hasThumbtackCustomerId: Boolean(parsed.thumbtackCustomerId),
+      if (incoming.kind === "ignored") {
+        res.status(200).json({ok: true, ignored: true});
+        return;
+      }
+      if (incoming.kind === "message") {
+        await saveLeadEvent(db, incoming);
+        res.status(200).json({ok: true, messageReceived: true});
+        return;
+      }
+      const parsed = parseThumbtackLeadPayload(incoming.payload);
+      parsed.externalId = incoming.leadId;
+      const workflow = await db.doc("leadAutomationState/leadWorkflow").get();
+      if (workflow.get("enabled")) {
+        const lead = await ingestLead(db, incoming.leadId, parsed, incoming.payload);
+        await saveLeadEvent(db, incoming, {name: parsed.name, email: parsed.email, address: parsed.address, phone: parsed.phone,
+          jobTitle: parsed.jobTitle, jobInfo: parsed.clientJobNotes, initialEstimate: {price: parsed.price, hourlyRate: parsed.hourlyRate, hours: parsed.hours},
+          durationDetails: incoming.payload.request || incoming.payload.details || {}, ...(lead.jobId ? {jobId: lead.jobId, customerId: lead.customerId} : {})});
+        res.status(200).json({ok: true, leadId: incoming.leadId, duplicate: !!lead.duplicate, inviteUrl: leadInviteUrl(lead.inviteToken)});
+        return;
+      }
+      const saveConversation = async (jobId: string, customerId: string) => {
+        await saveLeadEvent(db, incoming, {
+          name: parsed.name, address: parsed.address, phone: parsed.phone,
+          jobTitle: parsed.jobTitle, jobInfo: parsed.clientJobNotes,
+          // Estimated pricing is explicitly not a client-agreed price.
+          initialEstimate: {
+            price: parsed.price, hourlyRate: parsed.hourlyRate,
+            hours: parsed.hours,
           },
+          durationDetails:
+            incoming.payload.request || incoming.payload.details || {},
+          jobId, customerId,
+        });
+      };
+
+      // Serialize concurrent deliveries to prevent duplicate job imports.
+      const result = await db.runTransaction(async (tx) => {
+        const existing = await tx.get(db.collection("jobs")
+          .where("sourceThumbtackLeadId", "==", incoming.leadId).limit(1));
+        if (!existing.empty) {
+          const doc = existing.docs[0];
+          const token = str(doc.get("leadInviteToken"));
+          return {
+            ok: true, duplicate: true,
+            customerId: str(doc.get("customerId")), jobId: doc.id,
+            inviteUrl: token ? leadInviteUrl(token) : null,
+          };
+        }
+        const token = generateInviteToken();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const validCustomerId = isOpaqueCustomerId(parsed.thumbtackCustomerId);
+        const customerId = resolveThumbtackCustomerId(
+          parsed.thumbtackCustomerId,
         );
-      }
-
-      const batch = db.batch();
-      const custRef = db.collection("customers")
-        .doc(customerId);
-      const custSnapshot = await custRef.get();
-      const customerPayload = buildThumbtackCustomerWritePayload(
-        parsed,
-        token,
-        now,
-        custSnapshot.exists,
-      );
-      batch.set(custRef, customerPayload, {merge: true});
-
-      const jobRef = db.collection("jobs").doc();
-      const jobPayload: Record<string, unknown> = {
-        title: parsed.jobTitle,
-        customerId: custRef.id,
-        date: "",
-        status: "Draft",
-        price: parsed.price,
-        hourlyRate: parsed.hourlyRate,
-        hours: parsed.hours,
-        notes: parsed.adminJobNotes,
-        tasks: [],
-        expenses: parsed.expenses,
-        payStatus: "Unpaid",
-        amountPaid: 0,
-        source: "thumbtack",
-        leadInviteToken: token,
-        bookingClientUid: null,
-      };
-      if (parsed.externalId) {
-        jobPayload.sourceThumbtackLeadId = parsed.externalId;
-      }
-      batch.set(jobRef, jobPayload);
-
-      const inviteRef = db.collection("leadInvites").doc(token);
-      const invitePayload: Record<string, unknown> = {
-        token,
-        customerId: custRef.id,
-        jobId: jobRef.id,
-        name: parsed.name,
-        phone: parsed.phone,
-        phoneNormalized,
-        email: parsed.email,
-        address: parsed.address,
-        jobTitle: parsed.jobTitle,
-        jobNotes: parsed.clientJobNotes,
-        source: "thumbtack",
-        sourceThumbtackLeadId: parsed.externalId || null,
-        status: "open",
-        clientUid: null,
-        bookingRequestId: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      if (hasValidThumbtackCustomerId) {
-        invitePayload.thumbtackCustomerId = parsed.thumbtackCustomerId;
-      }
-      batch.set(inviteRef, invitePayload);
-
-      await batch.commit();
-
-      const inviteUrl = leadInviteUrl(token);
-      logger.info("Thumbtack webhook created lead invite", {
-        customerId: custRef.id,
-        jobId: jobRef.id,
-        inviteToken: token,
-        externalId: parsed.externalId,
-        customerName: parsed.name,
-        jobTitle: parsed.jobTitle,
+        const custRef = db.collection("customers").doc(customerId);
+        const custSnapshot = await tx.get(custRef);
+        const jobRef = db.collection("jobs").doc();
+        tx.set(custRef, buildThumbtackCustomerWritePayload(
+          parsed, token, now, custSnapshot.exists,
+        ), {merge: true});
+        tx.set(jobRef, {
+          title: parsed.jobTitle, customerId, date: "", status: "Draft",
+          price: parsed.price, hourlyRate: parsed.hourlyRate,
+          hours: parsed.hours,
+          notes: parsed.adminJobNotes, tasks: [], expenses: parsed.expenses,
+          payStatus: "Unpaid", amountPaid: 0, source: "thumbtack",
+          leadInviteToken: token, bookingClientUid: null, createdAt: now,
+          sourceThumbtackLeadId: incoming.leadId,
+        });
+        tx.set(db.collection("leadInvites").doc(token), {
+          token, customerId, jobId: jobRef.id, name: parsed.name,
+          phone: parsed.phone,
+          phoneNormalized: normalizePhoneDigits(parsed.phone),
+          email: parsed.email, address: parsed.address,
+          jobTitle: parsed.jobTitle, jobNotes: parsed.clientJobNotes,
+          source: "thumbtack", sourceThumbtackLeadId: incoming.leadId,
+          status: "open", clientUid: null, bookingRequestId: null,
+          createdAt: now, updatedAt: now,
+          ...(validCustomerId ? {
+            thumbtackCustomerId: parsed.thumbtackCustomerId,
+          } : {}),
+        });
+        return {
+          ok: true, customerId, jobId: jobRef.id, inviteToken: token,
+          inviteUrl: leadInviteUrl(token),
+        };
       });
-      res.status(200).json({
-        ok: true,
-        customerId: custRef.id,
-        jobId: jobRef.id,
-        inviteToken: token,
-        inviteUrl,
-      });
+      // If saving fails after import, a webhook retry finds the same job
+      // and repairs the conversation write instead of duplicating the import.
+      await saveConversation(result.jobId, result.customerId);
+      logger.info("Thumbtack lead imported", {jobId: result.jobId});
+      res.status(200).json(result);
     } catch (err) {
       logger.error("Thumbtack webhook failed", err);
       res.status(500).json({ok: false, error: "internal"});

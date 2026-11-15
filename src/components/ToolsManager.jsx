@@ -11,15 +11,22 @@ export default function ToolsManager({ ctx }) {
   const [showUncategorizedOnly, setShowUncategorizedOnly] = useState(false);
   const [confirm, setConfirm] = useState(null);
 
-  const handleAdd = () => {
-    if (!name.trim()) return;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleAdd = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true); setError("");
+    try {
     if (category) {
-      addToolsBulk([{ name: name.trim(), category }]);
+      await addToolsBulk([{ name: name.trim(), category }]);
     } else {
-      addTool(name.trim());
+      await addTool(name.trim());
     }
     setName("");
     setCategory("");
+    } catch { setError("Could not save the tool. Please try again."); }
+    finally { setSaving(false); }
   };
 
   const toolsWithNormalizedCategory = useMemo(() => (
@@ -56,6 +63,7 @@ export default function ToolsManager({ ctx }) {
   return (
     <div>
       <h2 style={{ marginTop: 0 }}>Tools</h2>
+      {error && <p role="alert">{error}</p>}
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr auto auto" }}>
           <input
@@ -73,7 +81,7 @@ export default function ToolsManager({ ctx }) {
             <option value="">No category</option>
             {TOOL_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <Btn onClick={handleAdd}>Add Tool</Btn>
+          <Btn disabled={saving} onClick={handleAdd}>{saving ? "Saving…" : "Add Tool"}</Btn>
         </div>
         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
           <Btn

@@ -1,4 +1,4 @@
-export default function ConfirmModal({ message, onConfirm, onCancel }) {
+export default function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete" }) {
   return (
     <div
       onClick={onCancel}
@@ -28,7 +28,7 @@ export default function ConfirmModal({ message, onConfirm, onCancel }) {
             onClick={onConfirm}
             style={{ background: "#c0392b", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 44 }}
           >
-            Delete
+            {confirmLabel}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Card from "./ui/Card";
+import Input from "./ui/Input";
 import Btn from "./ui/Btn";
 import TaskEditor from "./TaskEditor";
 import { uid } from "../utils";
@@ -7,8 +8,22 @@ import { uid } from "../utils";
 export default function TasksTab({ job, saveJob, ctx }) {
   const { taskDefs, getTool } = ctx;
   const [selectedTaskDefId, setSelectedTaskDefId] = useState("");
-  const [expanded, setExpanded] = useState(null);
+  const [oneOff, setOneOff] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(() => job.tasks?.find(task => task.materials?.some(row => Number(row.cost) > 0 && !row.datePaid))?.id || null);
 
+  const addOneOff = async () => {
+    if (!oneOff.trim() || busy) return;
+    setBusy(true);
+    setFeedback("");
+    try {
+      await saveJob({ tasks: [...(job.tasks || []), { id: uid(), name: oneOff.trim(), toolIds: [], materials: [] }] });
+      setOneOff("");
+      setFeedback("One-off task added.");
+    } catch { setFeedback("Could not add task. Try again."); }
+    finally { setBusy(false); }
+  };
   const addTask = () => {
     const taskDef = taskDefs.find(t => t.id === selectedTaskDefId);
     if (!taskDef) return;
@@ -29,6 +44,11 @@ export default function TasksTab({ job, saveJob, ctx }) {
 
   return (
     <div>
+      <div className="admin-action-row">
+        <Input label="One-off task" value={oneOff} onChange={setOneOff} />
+        <Btn disabled={busy || !oneOff.trim()} onClick={addOneOff}>Add one-off task</Btn>
+      </div>
+      {feedback && <p role="status">{feedback}</p>}
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <select
           value={selectedTaskDefId}
@@ -36,7 +56,7 @@ export default function TasksTab({ job, saveJob, ctx }) {
           style={{ flex: 1, border: "1px solid #bdc3c7", borderRadius: 6, padding: "8px 10px", fontSize: 14, background: "#fff" }}
         >
           <option value="">— Select a task —</option>
-          {taskDefs.sort((a, b) => a.name.localeCompare(b.name)).map(t => (
+          {[...taskDefs].sort((a, b) => a.name.localeCompare(b.name)).map(t => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
@@ -52,10 +72,10 @@ export default function TasksTab({ job, saveJob, ctx }) {
       {(job.tasks || []).length === 0 && taskDefs.length > 0 && (
         <Card><p style={{ color: "#a0aec0", textAlign: "center" }}>No tasks added to this job yet.</p></Card>
       )}
-      {(job.tasks || []).map(task => (
+      {(job.tasks || []).map((task, index) => (
         <Card key={task.id} style={{ marginBottom: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ fontWeight: 600, cursor: "pointer" }} onClick={() => setExpanded(expanded === task.id ? null : task.id)}>
+            <div id={`task-cost-${task.id || index}`} style={{ fontWeight: 600, cursor: "pointer" }} onClick={() => setExpanded(expanded === task.id ? null : task.id)}>
               {task.name} {expanded === task.id ? "▲" : "▼"}
               <span style={{ fontWeight: 400, fontSize: 12, color: "#7f8c8d", marginLeft: 8 }}>
                 {(task.toolIds || []).length} tool{(task.toolIds || []).length !== 1 ? "s" : ""}

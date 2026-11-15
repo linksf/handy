@@ -1,10 +1,12 @@
+import {ensureTool} from "./toolCatalogStore.js";
+import {normalizeToolName} from "./toolNames.js";
 import { addDoc, collection, getDocs, updateDoc, doc } from "firebase/firestore";
 import { HANDYMAN_TASK_TEMPLATES } from "../handymanTaskTemplates.js";
 import { RECOMMENDED_TOOLS } from "../toolCatalog.js";
 import { syncTaskCatalogEntry } from "./taskCatalog.js";
 
 function normName(s) {
-  return String(s || "").trim().toLowerCase();
+  return normalizeToolName(s);
 }
 
 function toolIdsForTemplate(template, toolsByName) {
@@ -35,12 +37,9 @@ export async function seedHandymanTaskTemplates(db, { updateExisting = false } =
   let toolsAdded = 0;
   for (const t of RECOMMENDED_TOOLS) {
     if (toolsByName.has(normName(t.name))) continue;
-    const ref = await addDoc(collection(db, "tools"), {
-      name: t.name,
-      category: t.category || "",
-    });
+    const ref = await ensureTool(db, t.name, t.category);
     toolsByName.set(normName(t.name), { id: ref.id, name: t.name });
-    toolsAdded++;
+    if (ref.created) toolsAdded++;
   }
 
   const tasksSnap = await getDocs(collection(db, "tasks"));

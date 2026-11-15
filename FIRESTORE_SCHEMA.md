@@ -94,7 +94,8 @@ create and account linking go through callable functions.
 | `status` | string | `Scheduled` \| `In Progress` \| `Complete` \| `Cancelled` |
 | `price` | string/number | Flat rate |
 | `hourlyRate` | string/number | |
-| `hours` | string/number | |
+| `hours` | string/number | Base hourly labor, including work timer/manual session hours. |
+| `laborEntries` | array | Additional invoice labor rows: `{ name, hours, hourlyRate }`. Positive hours and nonnegative rates; zero-rate planning is shown on invoices. Additive to base hours and flat price. |
 | `notes` | string | |
 | `tasks` | array | Job checklist + materials, etc. |
 | `expenses` | array | Optional |
@@ -227,3 +228,49 @@ Jobs may also store `squareInvoiceId`, `squarePublicUrl`, `squareInvoiceStatus`,
 ## Indexes
 
 See [`firestore.indexes.json`](firestore.indexes.json) (`availability`: `status` + `start`; `bookingRequests` composites for scheduling and client history).
+
+## Lead-first Thumbtack workflow
+
+See `functions/LEAD_FIRST_WORKFLOW.md` for canonical leads, separate lead-cost/payment ledgers, multi-visit jobs, equipment research, historical cleanup safeguards, owner callables and reporting schedules. New lead/cost/payment/conversation/review reads are owner-only. Ledger writes are backend-only; owner lead edits are restricted to lifecycle status. Existing website inquiry creation is unchanged.
+
+### Multiple invoices and comped items
+
+Job `invoices` is an array of `{id, name}`. The implicit `primary` invoice retains existing charges and historical payments. `invoiceItems` contains independently added rows (`id`, `invoiceId`, `kind`: labor/expense/item, `name`, `hours`, `hourlyRate`, `amount`, `reimbursable`, `datePaid`, `comped`). Expense rows retain their actual cost regardless of comp status.
+
+`invoiceOverrides` maps stable source keys to `{invoiceId, comped}` for existing flat labor, base timer hours, additional labor, expenses, and task materials. Each source belongs to one invoice, defaulting to `primary`. A comp preserves `originalAmountCents`, bills zero, and makes a non-reimbursable cost visible on the invoice. Job profitability is billed totals across all invoices less actual recorded costs.
+
+Payments retain `jobId` and now include `invoiceId` (legacy payments default to `primary`). The payment transaction maintains job-wide `amountPaid` and the `invoicePaid` allocation map. Primary paid balance is the job total less other invoice allocations. Historical dating never changes paid balances; refunds cannot exceed that invoice's recorded payments. Invoice metadata edits do not write payment allocations.
+
+### Owner intake workflow
+
+`adminIntake/{kind:id}` holds owner queue state, saved reply draft, Pacific snooze cutoff, acknowledged reply evidence, and the selected customer/job link. The original lead, inquiry, or preliminary job remains the source record. Append-only `history` entries record reply acknowledgments, state changes, conversion, previous links and reassignment reasons. These documents and history are owner-only.
+
+Quick jobs can store a service address (`jobAddress`), independent `siteContact` and `payer` records, and optional `estimate` and `approvedPrice` values. Invoice totals continue to use invoice lines. Material edits from the job editor are recorded in `jobs/{jobId}/adminHistory`. Thumbtack's existing confirmation workflow reads the owner mapping when present so a later confirmed visit can reuse the selected job and customer.
+
+### Owner visits and work sessions
+
+Jobs retain their existing `visits` array and legacy date. Owner-created or edited visits add a revision, travel minutes, overlap decision and reason, communication timestamp, and per-visit sync status, error and optional event identity. A short sync lease serializes retries. Calendar events use stable IDs and suppress attendee updates. The original booking request is preserved.
+
+Time adjustments update the session and the job's base billable hours in one transaction. Actual start, end and duration are recorded separately from billable minutes/hours. Owner visit and time edits append previous and current values, timestamps and correction reasons to `jobs/{jobId}/adminHistory`.
+
+### Invoice issuance, corrections and closeout
+
+`jobs/{jobId}.issuedInvoices` maps invoice IDs to immutable-in-UI snapshots of line amounts, original values, contact and invoice metadata, and the paid amount at issue. The owner can generate PDFs from each snapshot. Ledger records keep the original provider date when applicable and append `dateCorrections` with previous date, corrected date, reason and timestamp. Changing the report date does not modify payment or invoice amounts.
+
+Jobs can store a `finalVisit` outcome and a `closeout` record with a date, remaining issues and an exception reason. Archiving retains `archivedFromStatus` for restoration. These administrative changes append previous and current values in the existing job history.
+
+### Job change orders, private access, parts and callbacks
+
+Jobs can have `changeOrders` with revised scope, a price in cents, private photo IDs, and recorded approval (approver, Pacific approval date, method, evidence, timestamp, invoice ID). Approval atomically adds an invoice item with `changeOrderId`. Previously issued versions retain their original line items.
+
+Owner-only `jobs/{jobId}/privateRecords/{recordId}` stores default or visit-specific arrival/access details and compressed change-order photos. Access details do not live on customer, booking, or invoice records. `parts` stores vendor, expected date, return deadline, reminder date and dependent visit. A postponed visit keeps its previous times, reason and calendar identity. Calendar sync can mark the old event transparent, and rescheduling reuses it.
+
+Callback jobs store `callbackOf` and `callbackType` and may carry original photo links and material descriptions as references. Billing records and cost amounts remain on the original job.
+
+### Receipt and offline field capture
+
+`adminReceipts/{receiptId}` is owner-only and create-once. It contains the original photo when present, the extraction proposal, reviewed merchant/date/total, and allocations. Each allocation adds a stable dated expense with `receiptId` to its job in the same transaction.
+
+Offline captures are queued in owner-scoped browser storage. Synced notes and photos use stable `adminHistory/capture-{id}` documents for retries. Photos live in the job’s owner-only `privateRecords` collection and are indexed by the job’s `fieldPhotoIds`. Timed capture reuses the work-session transaction with a stable `capture-{id}` session document. Notes detect changes to their original baseline and allow review before applying.
+
+The owner-only `draftAdminCapture` callable accepts bounded image or audio media and returns a Vertex AI proposal for manual review. It performs no job or ledger writes.

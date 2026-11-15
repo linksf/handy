@@ -1,0 +1,11 @@
+{
+  "name": "@handy/shared",
+  "type": "module",
+  "main": "customerIds.js",
+  "exports": {
+    ".": "./customerIds.js",
+    "./finance": "./finance.js",
+    "./invoices": "./invoices.js",
+    "./paymentDate": "./paymentDate.js"
+  }
+}

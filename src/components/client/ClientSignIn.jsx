@@ -8,7 +8,7 @@ import { clientFont, colors } from "./clientTheme";
 const cardStyle = {
   background: "#fff",
   borderRadius: 12,
-  padding: "36px 32px",
+  padding: "28px 24px",
   maxWidth: 420,
   width: "100%",
   boxShadow: "0 8px 24px rgba(35,35,35,0.12)",
@@ -25,6 +25,23 @@ const tabStyle = (active) => ({
   fontFamily: "inherit",
   fontSize: 14,
   color: colors.text,
+});
+
+const secondaryBtnStyle = (disabled) => ({
+  width: "100%",
+  padding: "12px 20px",
+  fontSize: 15,
+  fontWeight: 600,
+  border: "1px solid #dadce0",
+  borderRadius: 8,
+  background: "#fff",
+  color: colors.text,
+  cursor: disabled ? "wait" : "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 12,
+  fontFamily: "inherit",
 });
 
 export default function ClientSignIn({
@@ -44,8 +61,10 @@ export default function ClientSignIn({
   const [googleBusy, setGoogleBusy] = useState(false);
   const [localError, setLocalError] = useState(null);
 
+  const showThumbtack = Boolean(onFindLead && !leadInvite && mode === "signup");
+
   const stashLeadLookup = () => {
-    if (!onFindLead || !thumbtackCustomerId.trim()) return;
+    if (!showThumbtack || !thumbtackCustomerId.trim()) return;
     onFindLead({ thumbtackCustomerId: thumbtackCustomerId.trim() });
   };
 
@@ -95,7 +114,7 @@ export default function ClientSignIn({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 24,
+        padding: 16,
         background: colors.bg,
         fontFamily: clientFont,
       }}
@@ -103,7 +122,7 @@ export default function ClientSignIn({
       <div style={cardStyle}>
         <p
           style={{
-            margin: "0 0 4px",
+            margin: "0 0 2px",
             fontSize: 12,
             fontWeight: 700,
             color: colors.mmuted,
@@ -114,35 +133,16 @@ export default function ClientSignIn({
         >
           {BUSINESS_NAME}
         </p>
-        <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700, color: colors.text, textAlign: "center" }}>
+        <h1 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 700, color: colors.text, textAlign: "center" }}>
           {leadInvite ? "Finish your booking" : "Book a visit"}
         </h1>
-        <p style={{ margin: "0 0 24px", fontSize: 14, color: "#555", lineHeight: 1.5, textAlign: "center" }}>
+        <p style={{ margin: "0 0 16px", fontSize: 14, color: "#555", lineHeight: 1.45, textAlign: "center" }}>
           {leadInvite
             ? "Sign in or create an account to confirm your details and pick a time."
             : "Sign in to request a time. You'll get an update once your request is reviewed."}
         </p>
 
-        {onFindLead && !leadInvite ? (
-          <div style={{ marginBottom: 20, padding: 14, background: colors.accentSoft, borderRadius: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-              Have a Thumbtack request?
-            </div>
-            <Input
-              label="Thumbtack Customer ID"
-              value={thumbtackCustomerId}
-              onChange={setThumbtackCustomerId}
-              placeholder="15–20 digit Customer ID"
-              name="thumbtackCustomerId"
-              autoComplete="off"
-            />
-            <p style={{ margin: 0, fontSize: 12, color: colors.mmuted, lineHeight: 1.4 }}>
-              Enter this before signing in — we'll find your open request after you log in.
-            </p>
-          </div>
-        ) : null}
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           <button
             type="button"
             onClick={() => {
@@ -182,98 +182,62 @@ export default function ClientSignIn({
             placeholder="At least 6 characters"
             autoComplete={mode === "signup" ? "new-password" : "current-password"}
           />
+          {showThumbtack ? (
+            <Input
+              label="Thumbtack Customer ID (optional)"
+              value={thumbtackCustomerId}
+              onChange={setThumbtackCustomerId}
+              placeholder="Only if you came from Thumbtack"
+              name="thumbtackCustomerId"
+              autoComplete="off"
+            />
+          ) : null}
           <Btn type="submit" style={{ width: "100%" }} disabled={disabled}>
             {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
           </Btn>
         </form>
 
         {localError && (
-          <p style={{ margin: "16px 0 0", fontSize: 13, color: colors.danger, lineHeight: 1.45 }} role="alert">
+          <p style={{ margin: "10px 0 0", fontSize: 13, color: colors.danger, lineHeight: 1.45 }} role="alert">
             {localError}
           </p>
         )}
 
-        {onGoogleSignIn && (
-          <>
-            <OrDivider />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+          {onGoogleSignIn && (
             <button
               type="button"
               onClick={handleGoogle}
               disabled={disabled}
-              style={{
-                width: "100%",
-                padding: "14px 20px",
-                fontSize: 15,
-                fontWeight: 600,
-                border: "1px solid #dadce0",
-                borderRadius: 8,
-                background: "#fff",
-                color: colors.text,
-                cursor: disabled ? "wait" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 12,
-                fontFamily: "inherit",
-              }}
+              style={secondaryBtnStyle(disabled)}
             >
               <GoogleIcon />
               {googleBusy ? "Continuing…" : "Continue with Google"}
             </button>
-          </>
-        )}
+          )}
 
-        {onContinueAsGuest && (
-          <>
-            <OrDivider />
+          {onContinueAsGuest && (
             <button
               type="button"
               onClick={onContinueAsGuest}
               disabled={disabled}
               style={{
-                width: "100%",
-                padding: "12px 20px",
-                fontSize: 15,
-                fontWeight: 600,
+                ...secondaryBtnStyle(disabled),
                 border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                background: "#fff",
-                color: colors.text,
-                cursor: disabled ? "wait" : "pointer",
-                fontFamily: "inherit",
               }}
             >
               Continue as guest
             </button>
-          </>
-        )}
+          )}
+        </div>
 
-        <p style={{ margin: "24px 0 0", fontSize: 12, color: colors.mmuted, textAlign: "center", lineHeight: 1.5 }}>
+        <p style={{ margin: "16px 0 0", fontSize: 12, color: colors.mmuted, textAlign: "center", lineHeight: 1.5 }}>
           Business owner?{" "}
           <a href="/admin" style={{ color: "#2980b9", fontWeight: 600 }}>
             Admin sign-in
           </a>
         </p>
       </div>
-    </div>
-  );
-}
-
-function OrDivider() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        margin: "24px 0 20px",
-        color: colors.mmuted,
-        fontSize: 13,
-      }}
-    >
-      <span style={{ flex: 1, height: 1, background: "#ecf0f1" }} />
-      <span>or</span>
-      <span style={{ flex: 1, height: 1, background: "#ecf0f1" }} />
     </div>
   );
 }

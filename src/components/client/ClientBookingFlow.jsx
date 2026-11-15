@@ -191,6 +191,7 @@ export default function ClientBookingFlow({ user, profile, profileLoading }) {
   const continueToTime = (e) => {
     e.preventDefault();
     setFormError(null);
+    if (!navigator.onLine) { setFormError("Reconnect to request a visit."); return; }
     if (!resolvedTitle) {
       setFormError("Add a short title or pick at least one task.");
       return;

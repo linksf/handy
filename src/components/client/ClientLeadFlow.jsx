@@ -276,6 +276,7 @@ export default function ClientLeadFlow({
         notes: [invite.jobNotes, notes.trim()].filter(Boolean).join("\n\n"),
         status: "pending",
         draftJobId: invite.jobId || null,
+        sourceThumbtackLeadId: invite.leadId || invite.sourceThumbtackLeadId || null,
         leadInviteId: invite.id,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),

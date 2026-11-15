@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { httpsCallable } from "firebase/functions";
 import { useClientAuth } from "../../hooks/useClientAuth";
 import { useClientProfile } from "../../hooks/useClientProfile";
-import { useBookingNotifications } from "../../hooks/useBookingNotifications";
 import { useMobile } from "../../hooks/useMobile";
 import { isOwnerFirebaseUser } from "../../auth/isOwnerFirebaseUser";
 import { BUSINESS_NAME } from "../../constants";
@@ -27,7 +26,6 @@ export default function ClientApp() {
   const { user, loading, signIn, signUp, signInWithGoogle, signOut } = useClientAuth();
   const isMobile = useMobile();
   const { profile, loading: profileLoading, saveProfile } = useClientProfile(user?.uid);
-  useBookingNotifications(user?.uid);
   const [route, setRoute] = useState(() => parseClientRoute(window.location.pathname));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);

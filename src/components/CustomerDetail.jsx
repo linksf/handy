@@ -4,7 +4,7 @@ import Btn from "./ui/Btn";
 import Input from "./ui/Input";
 import Badge from "./ui/Badge";
 import ConfirmModal from "./ui/ConfirmModal";
-import { statusColor, payColor } from "../constants";
+import { statusColor, payColor, leadBadgeColor, isPreliminaryCustomer } from "../constants";
 
 export default function CustomerDetail({ ctx }) {
   const { viewParam, getCustomer, jobsForCustomer, nav, updateCustomer, deleteCustomer, jobCost, jobRevenue } = ctx;
@@ -17,8 +17,13 @@ export default function CustomerDetail({ ctx }) {
   const f = (k) => (v) => setForm(x => ({ ...x, [k]: v }));
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>{c.name}</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>{c.name}</h2>
+          {isPreliminaryCustomer(c) && (
+            <Badge text="New lead" color={leadBadgeColor.bg} textColor={leadBadgeColor.tc} />
+          )}
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Btn small onClick={() => setEditing(e => !e)}>{editing ? "Cancel" : "Edit"}</Btn>
           <Btn small danger onClick={() => setConfirm({ message: "Delete customer and all their jobs?", onConfirm: () => deleteCustomer(c.id) })}>Delete</Btn>

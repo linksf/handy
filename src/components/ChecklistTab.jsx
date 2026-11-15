@@ -1,8 +1,30 @@
 import { useState } from "react";
+import { db } from "../firebase";
+import { changeVisit } from "../utils/visitStore";
+import Btn from "./ui/Btn";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
 import Card from "./ui/Card";
 
-export default function ChecklistTab({ job, ctx }) {
+export default function ChecklistTab({ job, ctx, openTasks }) {
   const { getTool } = ctx;
+  const visits = job.visits || [];
+  const [visitId, setVisitId] = useState(visits.find(visit => visit.status === "scheduled")?.id || "");
+  const [tool, setTool] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const visit = visits.find(item => item.id === visitId);
+  const changePacking = async change => {
+    setBusy(true);
+    setFeedback("");
+    try {
+      await changeVisit(db, job.id, visitId, before => ({ ...before, packing: change(before?.packing || []) }), visit.revision || "");
+      setFeedback("Packing list saved.");
+      return true;
+    } catch { setFeedback("Could not save packing item. Try again."); return false; }
+    finally { setBusy(false); }
+  };
   const [checked, setChecked] = useState({});
   const toggle = (key) => setChecked(c => ({ ...c, [key]: !c[key] }));
 
@@ -27,7 +49,29 @@ export default function ChecklistTab({ job, ctx }) {
 
   return (
     <Card>
-      <h3 style={{ marginTop: 0 }}>📦 Packing Checklist — {job.title}</h3>
+      <h3 style={{ marginTop: 0 }}>Packing checklist · {job.title}</h3>
+      <div className="admin-action-row"><Btn onClick={openTasks}>Add a job task</Btn>
+        {!visits.length && <Btn onClick={() => ctx.nav("visitEditor", [job.id, "new"])}>Schedule a visit</Btn>}</div>
+      {!!visits.length && <section>
+        <h4>Visit-specific tools</h4>
+        <Select label="Packing visit" value={visitId} onChange={setVisitId}
+          options={[{ value: "", label: "Select a visit" }, ...visits.map(item => ({ value: item.id, label: `${item.kind} · ${item.start?.slice(0, 10) || ""}` }))]} />
+        {visit && <>
+          {(visit.packing || []).map(item => <label className="packing-item" key={item.id}>
+            <input type="checkbox" checked={!!item.packed} disabled={busy} onChange={() => changePacking(rows =>
+              rows.map(row => row.id === item.id ? { ...row, packed: !row.packed } : row))} />
+            {item.name} × {item.quantity}
+          </label>)}
+          <div className="admin-action-row">
+            <Input label="One-off tool" value={tool} onChange={setTool} />
+            <Input label="Quantity" type="number" value={quantity} onChange={setQuantity} />
+            <Btn disabled={busy || !tool.trim() || !Number.isInteger(Number(quantity)) || Number(quantity) < 1} onClick={async () => {
+              if (await changePacking(rows => [...rows, { id: crypto.randomUUID(), name: tool.trim(), quantity: Number(quantity), packed: false }])) setTool("");
+            }}>Add tool</Btn>
+          </div>
+          {feedback && <p role="status">{feedback}</p>}
+        </>}
+      </section>}
       {total === 0 && (
         <p style={{ color: "#a0aec0" }}>No tools or materials added to tasks yet.</p>
       )}

@@ -26,7 +26,7 @@ const categoryLabel = (category) =>
 
 export default function Inquiries({ ctx }) {
   const { inquiries = [], markInquiryReviewed } = ctx;
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(ctx.viewParam || null);
   const selected = inquiries.find((inquiry) => inquiry.id === selectedId);
 
   return (
@@ -39,6 +39,7 @@ export default function Inquiries({ ctx }) {
           <Card key={inquiry.id} style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
             <button
               type="button"
+              aria-expanded={selectedId === inquiry.id}
               aria-label={`View inquiry from ${inquiry.name || "unknown customer"}`}
               onClick={() => setSelectedId(selectedId === inquiry.id ? null : inquiry.id)}
               style={summaryButtonStyle}

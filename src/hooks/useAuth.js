@@ -1,3 +1,4 @@
+import { unsubscribeDevice } from "../utils/pwa";
 import { useState, useEffect, useCallback } from "react";
 import {
   GoogleAuthProvider,
@@ -20,7 +21,7 @@ function applyUserGate(u, setUser, setLoading, setAuthNotice, setBlockedFirebase
   }
 
   const email = getGoogleEmailFromUser(u);
-  if (!email) {
+  if (!email && navigator.onLine) {
     u.reload()
       .then(() => {
         const after = auth.currentUser;
@@ -71,21 +72,12 @@ export function useAuth() {
   const [blockedFirebaseUser, setBlockedFirebaseUser] = useState(null);
 
   useEffect(() => {
-    let unsub = () => {};
-
-    (async () => {
-      try {
-        await getRedirectResult(auth);
-      } catch (err) {
-        console.error("Google redirect sign-in error:", err);
-      }
-
-      unsub = onAuthStateChanged(auth, (u) => {
-        applyUserGate(u, setUser, setLoading, setAuthNotice, setBlockedFirebaseUser);
-      });
-    })();
-
-    return () => unsub();
+    void getRedirectResult(auth).catch(err => console.warn("Google redirect sign-in", err.code));
+    const refresh = user => applyUserGate(user, setUser, setLoading, setAuthNotice, setBlockedFirebaseUser);
+    const online = () => refresh(auth.currentUser);
+    const unsubscribe = onAuthStateChanged(auth, refresh);
+    window.addEventListener("online", online);
+    return () => { unsubscribe(); window.removeEventListener("online", online); };
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
@@ -108,7 +100,11 @@ export function useAuth() {
     }
   }, []);
 
-  const signOut = useCallback(() => firebaseSignOut(auth), []);
+  const signOut = useCallback(async () => {
+    try { await unsubscribeDevice(); }
+    catch { /* Generic push messages cannot expose account records after sign-out. */ }
+    await firebaseSignOut(auth);
+  }, []);
 
   return { user, loading, signInWithGoogle, signOut, authNotice, blockedFirebaseUser };
 }

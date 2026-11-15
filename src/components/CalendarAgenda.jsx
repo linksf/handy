@@ -1,165 +1,62 @@
 import { useMemo, useState } from "react";
 import Card from "./ui/Card";
-import Badge from "./ui/Badge";
 import Btn from "./ui/Btn";
-import { statusColor } from "../constants";
-
-function formatTs(ts) {
-  if (!ts?.toDate) return "—";
-  return ts.toDate().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-function dayKeyFromDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function addDays(d, n) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-
-function dayLabel(d) {
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-}
+import { displayDay, displayPacificTime, pacificDay, recordDate, shiftDay } from "../utils/adminDates";
+import { jobCommitments } from "../utils/adminQueues";
 
 export default function CalendarAgenda({ ctx }) {
-  const { data, bookingRequests, nav, getCustomer } = ctx;
-  const [weekStart, setWeekStart] = useState(() => {
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return t;
-  });
-
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-
-  const itemsByDay = useMemo(() => {
-    const map = new Map();
-    for (const d of days) {
-      map.set(dayKeyFromDate(d), { jobs: [], bookings: [] });
-    }
-
-    for (const j of data.jobs) {
-      if (j.status === "Cancelled") continue;
-      const k = j.date;
-      if (map.has(k)) map.get(k).jobs.push(j);
-    }
-
-    for (const r of bookingRequests) {
-      if (r.status !== "pending") continue;
-      const start = r.requestedStart?.toDate?.();
-      if (!start) continue;
-      const k = dayKeyFromDate(start);
-      if (map.has(k)) map.get(k).bookings.push(r);
-    }
-
-    for (const [, bucket] of map) {
-      bucket.jobs.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-      bucket.bookings.sort(
-        (a, b) => (a.requestedStart?.toMillis?.() || 0) - (b.requestedStart?.toMillis?.() || 0)
-      );
-    }
-
-    return map;
-  }, [days, data.jobs, bookingRequests]);
+  const { data, bookingRequests, nav } = ctx;
+  const today = pacificDay(new Date());
+  const [weekStart, setWeekStart] = useState(today);
+  const days = Array.from({ length: 7 }, (_, index) => shiftDay(weekStart, index));
+  const agenda = useMemo(() => {
+    const approved = new Map(bookingRequests.filter(row => row.status === "approved" && row.linkedJobId)
+      .map(row => [row.linkedJobId, row]));
+    const customersById = new Map(data.customers.map(customer => [customer.id, customer]));
+    return [
+      ...data.jobs.flatMap(job => jobCommitments(job, approved.get(job.id)).map(visit => ({
+        ...visit, visitId: visit.key, key: `job:${job.id}:${visit.key}`, id: job.id,
+        title: job.title, view: "job/:id", status: job.status, detail: customersById.get(job.customerId)?.name,
+      }))),
+      ...bookingRequests.filter(row => row.status === "pending").map(row => ({
+        key: `booking:${row.id}`, id: row.id, view: "booking/:id", title: row.title,
+        day: pacificDay(row.requestedStart), time: row.requestedStart, status: "Pending booking", detail: row.location,
+      })),
+    ].sort((a, b) => (recordDate(a.time)?.getTime() ?? Infinity) - (recordDate(b.time)?.getTime() ?? Infinity));
+  }, [data.jobs, data.customers, bookingRequests]);
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <h2 style={{ margin: 0, color: "#232323", fontWeight: 700 }}>Calendar</h2>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Btn small onClick={() => setWeekStart((w) => addDays(w, -7))}>← Prev</Btn>
-          <Btn small onClick={() => {
-            const t = new Date();
-            t.setHours(0, 0, 0, 0);
-            setWeekStart(t);
-          }}>Today</Btn>
-          <Btn small onClick={() => setWeekStart((w) => addDays(w, 7))}>Next →</Btn>
-        </div>
+      <header className="daily-heading">
+        <h1>Calendar</h1>
+        <p>Pacific time</p>
+      </header>
+      <div className="agenda-controls">
+        <Btn onClick={() => setWeekStart(day => shiftDay(day, -7))}>Previous week</Btn>
+        <Btn onClick={() => setWeekStart(today)}>Today</Btn>
+        <Btn onClick={() => setWeekStart(day => shiftDay(day, 7))}>Next week</Btn>
       </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {days.map((d) => {
-          const k = dayKeyFromDate(d);
-          const { jobs, bookings } = itemsByDay.get(k) || { jobs: [], bookings: [] };
-          const isToday = dayKeyFromDate(new Date()) === k;
-          const empty = jobs.length === 0 && bookings.length === 0;
-
+      <div className="agenda-days">
+        {days.map(day => {
+          const items = agenda.filter(item => item.day === day);
           return (
-            <Card
-              key={k}
-              style={{
-                border: isToday ? "2px solid #f9bf3b" : undefined,
-                background: isToday ? "#fffef5" : undefined,
-              }}
-            >
-              <h3 style={{ margin: "0 0 10px", fontSize: 15, color: "#232323" }}>
-                {dayLabel(d)}
-                {isToday ? <span style={{ marginLeft: 8, fontSize: 12, color: "#f39c12" }}>Today</span> : null}
-              </h3>
-              {empty ? (
-                <p style={{ margin: 0, fontSize: 13, color: "#7f8c8d" }}>Nothing scheduled.</p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {bookings.map((r) => (
-                    <div
-                      key={`b-${r.id}`}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: 10,
-                        padding: "8px 0",
-                        borderBottom: "1px solid #ecf0f1",
-                        cursor: r.linkedJobId ? "pointer" : "default",
-                      }}
-                      onClick={() => r.linkedJobId && nav("job/:id", r.linkedJobId)}
-                    >
-                      <div>
-                        <div style={{ fontSize: 12, color: "#7f8c8d", marginBottom: 2 }}>Booking request</div>
-                        <div style={{ fontWeight: 600 }}>{r.title}</div>
-                        <div style={{ fontSize: 12, color: "#555" }}>
-                          {formatTs(r.requestedStart)} – {formatTs(r.requestedEnd)}
-                        </div>
-                      </div>
-                      <Badge
-                        text={r.status}
-                        color={r.status === "pending" ? "#fef9e7" : r.status === "approved" ? "#d5f5e3" : "#fadbd8"}
-                        textColor={r.status === "pending" ? "#f39c12" : r.status === "approved" ? "#27ae60" : "#c0392b"}
-                      />
+            <Card key={day} style={{ padding: 0, borderColor: day === today ? "#d79610" : undefined }}>
+              <section className="queue-panel" style={{ border: 0 }} aria-labelledby={`agenda-${day}`}>
+                <h2 id={`agenda-${day}`}>{displayDay(day)} {day === today && <span>Today</span>}</h2>
+                {items.length ? <ul className="queue-rows">
+                  {items.map(item => <li className="queue-row" key={item.key}>
+                    <div className="queue-info">
+                      <span className={`admin-status ${item.view === "booking/:id" ? "admin-status--decision" : ""}`}>{item.status}</span>
+                      <strong>{item.title}</strong>
+                      <span className="queue-meta">{[item.label, displayPacificTime(item.time), item.detail].filter(Boolean).join(" · ")}</span>
                     </div>
-                  ))}
-                  {jobs.map((j) => {
-                    const c = getCustomer(j.customerId);
-                    const st = statusColor[j.status] || { bg: "#ecf0f1", tc: "#232323" };
-                    return (
-                      <div
-                        key={`j-${j.id}`}
-                        onClick={() => nav("job/:id", j.id)}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "8px 0",
-                          borderBottom: "1px solid #ecf0f1",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: 12, color: "#7f8c8d", marginBottom: 2 }}>Job</div>
-                          <div style={{ fontWeight: 600 }}>{j.title}</div>
-                          <div style={{ fontSize: 12, color: "#555" }}>{c?.name || "—"}</div>
-                        </div>
-                        <Badge text={j.status} color={st.bg} textColor={st.tc} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                    <div className="admin-action-row">
+                    <Btn onClick={() => nav(item.view, item.id)}>{item.view === "booking/:id" ? "Review booking" : "Open visit"}</Btn>
+                    {item.visitId && <Btn onClick={() => nav("visitEditor", [item.id, item.visitId])}>Edit visit</Btn>}
+                    </div>
+                  </li>)}
+                </ul> : <p className="queue-empty">Nothing scheduled.</p>}
+              </section>
             </Card>
           );
         })}

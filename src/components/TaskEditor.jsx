@@ -1,16 +1,21 @@
 import { useState } from "react";
+import Input from "./ui/Input";
 import Btn from "./ui/Btn";
 import { uid } from "../utils";
 import { useMobile } from "../hooks/useMobile";
 
 export default function TaskEditor({ task, updateTask, getTool }) {
   const isMobile = useMobile();
-  const [newMat, setNewMat] = useState({ name: "", qty: "", unit: "", cost: "", reimbursable: false });
+  const [newMat, setNewMat] = useState({ name: "", qty: "", unit: "", cost: "", reimbursable: false, datePaid: "" });
+
+  const [dates, setDates] = useState({});
+  const [dateStatus, setDateStatus] = useState("");
+  const [dating, setDating] = useState(false);
 
   const addMat = () => {
-    if (!newMat.name.trim()) return;
+    if (!newMat.name.trim() || (Number(newMat.cost) > 0 && !newMat.datePaid)) return;
     updateTask({ ...task, materials: [...(task.materials || []), { id: uid(), ...newMat }] });
-    setNewMat({ name: "", qty: "", unit: "", cost: "", reimbursable: false });
+    setNewMat({ name: "", qty: "", unit: "", cost: "", reimbursable: false, datePaid: "" });
   };
   const removeMat = (id) => updateTask({ ...task, materials: task.materials.filter(m => m.id !== id) });
 
@@ -41,8 +46,8 @@ export default function TaskEditor({ task, updateTask, getTool }) {
 
       {/* Materials */}
       <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>📦 Materials</div>
-      {(task.materials || []).map(m => (
-        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc", borderRadius: 6, padding: "5px 10px", marginBottom: 4, fontSize: 13 }}>
+      {(task.materials || []).map((m, index) => (
+        <div key={m.id || index}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f7fafc", borderRadius: 6, padding: "5px 10px", marginBottom: 4, fontSize: 13 }}>
           <div>
             <span>{m.name} {m.qty ? `× ${m.qty}${m.unit ? " " + m.unit : ""}` : ""}</span>
             {m.reimbursable && <span style={{ marginLeft: 6, background: "#d5f5e3", color: "#27ae60", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>Reimbursable</span>}
@@ -52,7 +57,22 @@ export default function TaskEditor({ task, updateTask, getTool }) {
             <button onClick={() => removeMat(m.id)} style={{ background: "none", border: "none", color: "#c0392b", cursor: "pointer", fontSize: 14 }}>✕</button>
           </div>
         </div>
+          {Number(m.cost) > 0 && <details open={!m.datePaid || undefined}>
+            <summary>{m.datePaid ? "Correct material date" : "Add missing material date"}</summary>
+            <Input label={`Date for ${m.name}`} type="date" value={dates[index] ?? m.datePaid ?? ""} onChange={value => setDates(current => ({ ...current, [index]: value }))} />
+            <Btn disabled={dating || !dates[index]} onClick={async () => {
+              setDating(true);
+              try {
+                await updateTask({ ...task, materials: task.materials.map((row, i) => i === index ? { ...row, datePaid: dates[index] } : row) });
+                setDateStatus("Material date saved.");
+              } catch { setDateStatus("Could not save material date."); }
+              finally { setDating(false); }
+            }}>Save material date</Btn>
+          </details>}
+        </div>
       ))}
+      {dateStatus && <p role="status">{dateStatus}</p>}
+      <label>Material purchase date (required when cost is entered) <input type="date" value={newMat.datePaid || ""} onChange={e=>setNewMat(x=>({...x,datePaid:e.target.value}))}/></label>
       {isMobile ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <input value={newMat.name} onChange={e => setNewMat(x => ({ ...x, name: e.target.value }))} placeholder="Material name" style={{ width: "100%", boxSizing: "border-box", border: "1px solid #bdc3c7", borderRadius: 6, padding: "10px 12px", fontSize: 16 }} />

@@ -8,11 +8,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "npm run build && firebase deploy --only hosting",
+    "deploy": "npm run build && npx firebase-tools@latest deploy --only hosting",
     "deploy:hosting": "npm run deploy",
     "set-owner-claim": "node scripts/setOwnerClaim.mjs",
     "seed-handyman-tasks": "node scripts/seedHandymanTasks.mjs",
-    "invoice-api": "node server/invoiceApi.mjs"
+    "invoice-api": "node server/invoiceApi.mjs",
+    "preview:admin": "vite --config scripts/admin-preview/vite.config.js",
+    "preview:admin:phone": "vite build --config scripts/admin-preview/vite.config.js && node scripts/admin-preview/serve.mjs",
+    "preview:pwa": "vite build --config scripts/admin-preview/vite.config.js && HANDY_PREVIEW_PORT=5176 node scripts/admin-preview/serve.mjs"
   },
   "dependencies": {
     "@handy/shared": "file:./shared",

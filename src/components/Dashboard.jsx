@@ -1,161 +1,138 @@
-import Card from "./ui/Card";
-import Badge from "./ui/Badge";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Btn from "./ui/Btn";
-import { statusColor } from "../constants";
+import { useAdminLocalState } from "../hooks/useAdminLocalState";
+import { displayDay, pacificDay, shiftDay } from "../utils/adminDates";
+import { buildAdminQueues } from "../utils/adminQueues";
 
-function formatTs(ts) {
-  if (!ts?.toDate) return "—";
-  return ts.toDate().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const sections = [
+  ["today", "Today", "No confirmed visits today."],
+  ["reply", "Needs reply", "No recent replies to review."],
+  ["decision", "Needs a decision", "No recent decisions waiting."],
+  ["money", "Money due", "No balances to review."],
+  ["overdue", "Overdue", "No past-dated visits still open."],
+  ["upcoming", "Upcoming", "No confirmed visits after today."],
+];
+
+function QueueRows({ rows, queue, nav, change }) {
+  const triage = ["reply", "decision", "backlog"].includes(queue);
+  return <ul className="queue-rows">
+    {rows.map(row => (
+      <li className="queue-row" key={row.key} data-queue-key={row.key}>
+        <div className="queue-info">
+          <span className={`admin-status admin-status--${queue}`}>{row.status}</span>
+          <strong>{row.title}</strong>
+          {row.detail && <span className="queue-meta">{row.detail}</span>}
+        </div>
+        <div className={triage ? "queue-actions queue-actions--triage" : "queue-actions"}>
+          <Btn style={{ paddingInline: 12 }} onClick={() => nav(row.view, row.id)}>{row.action}</Btn>
+          {triage && (
+            <>
+              <button className="admin-quiet" aria-label={`Defer ${row.title} until tomorrow`} onClick={event => change(row, "deferred", event.currentTarget)}>Defer</button>
+              <button className="admin-quiet" aria-label={`Dismiss ${row.title}`} onClick={event => change(row, "dismissed", event.currentTarget)}>Dismiss</button>
+            </>
+          )}
+        </div>
+      </li>
+    ))}
+  </ul>;
 }
 
 export default function Dashboard({ ctx }) {
-  const {
-    upcomingJobs,
-    totalRevenue,
-    totalCost,
-    data,
-    nav,
-    getCustomer,
-    jobRevenue,
-    pendingBookingCount,
-    pendingBookings,
-    inquiries = [],
-    newInquiryCount = 0,
-  } = ctx;
-  const totalProfit = totalRevenue - totalCost;
+  const { data, nav, leads, inquiries, bookingRequests, intake } = ctx;
+  const [today, setToday] = useState(() => pacificDay(new Date()));
+  const [hidden, setHidden] = useAdminLocalState("queue", {});
+  const [notice, setNotice] = useState(null);
+  const undoButton = useRef(null);
+  const lastControl = useRef(null);
+  useEffect(() => {
+    const update = () => setToday(pacificDay(new Date()));
+    const timer = setInterval(update, 30000);
+    window.addEventListener("focus", update);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, []);
+
+  const queues = useMemo(() => buildAdminQueues({ ...data, leads, inquiries, bookingRequests, intake }, today),
+    [data.jobs, data.customers, leads, inquiries, bookingRequests, intake, today]);
+  const isHidden = row => {
+    const entry = hidden[row.key];
+    return entry?.revision === row.revision && (entry.kind === "dismissed" || entry.until > today);
+  };
+  const hiddenRows = [...queues.reply, ...queues.decision, ...queues.backlog].filter(isHidden);
+  const change = (row, kind, control) => {
+    lastControl.current = { key: row.key, label: control.getAttribute("aria-label") };
+    setHidden(current => ({
+      ...current, [row.key]: { kind, revision: row.revision, until: shiftDay(today, 1) },
+    }));
+    setNotice({ key: row.key, title: row.title, kind });
+  };
+  useEffect(() => {
+    if (notice) undoButton.current?.focus();
+    else if (lastControl.current) {
+      const { key, label } = lastControl.current;
+      const row = [...document.querySelectorAll("[data-queue-key]")].find(item => item.dataset.queueKey === key);
+      [...(row?.querySelectorAll("button") || [])].find(button => button.getAttribute("aria-label") === label)?.focus();
+      lastControl.current = null;
+    }
+  }, [notice]);
+
+  const restore = key => {
+    if (lastControl.current?.key !== key) {
+      const row = hiddenRows.find(item => item.key === key);
+      lastControl.current = { key, label: row && `Dismiss ${row.title}` };
+    }
+    setHidden(current => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setNotice(null);
+  };
+
+  const backlog = queues.backlog.filter(row => !isHidden(row));
   return (
-    <div>
-      <h2 style={{ marginTop: 0, color: "#232323", fontWeight: 700 }}>Dashboard</h2>
-
-      {newInquiryCount > 0 && (
-        <Card
-          style={{
-            marginBottom: 20,
-            background: "#eef6ff",
-            border: "2px solid #2980b9",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: "#232323" }}>
-                {newInquiryCount} new inquir{newInquiryCount === 1 ? "y" : "ies"}
-              </div>
-              <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
-                Review guest project requests and follow up with prospective customers.
-              </div>
-            </div>
-            <Btn onClick={() => nav("inquiries")}>Review inquiries</Btn>
-          </div>
-          {inquiries.filter((inquiry) => inquiry.status === "new").slice(0, 3).map((inquiry) => (
-            <div
-              key={inquiry.id}
-              style={{
-                marginTop: 12,
-                paddingTop: 12,
-                borderTop: "1px solid #cfe1f5",
-                fontSize: 13,
-                color: "#555",
-              }}
-            >
-              <strong style={{ color: "#232323" }}>{inquiry.name || "Unnamed inquiry"}</strong>
-              {" · "}
-              {inquiry.category === "fabrication" ? "Custom Fabrication" : "Handyman Services"}
-            </div>
-          ))}
-          {newInquiryCount > 3 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#7f8c8d" }}>
-              +{newInquiryCount - 3} more
-            </div>
-          )}
-        </Card>
-      )}
-
-      {pendingBookingCount > 0 && (
-        <div role="button" tabIndex={0} onClick={() => nav("scheduling")} onKeyDown={(e) => e.key === "Enter" && nav("scheduling")} style={{ cursor: "pointer" }}>
-        <Card
-          style={{
-            marginBottom: 20,
-            background: "#fffef5",
-            border: "2px solid #f9bf3b",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: "#232323" }}>
-                {pendingBookingCount} pending booking{pendingBookingCount === 1 ? "" : "s"}
-              </div>
-              <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
-                Review and approve client requests on the Schedule page.
-              </div>
-            </div>
-            <Btn onClick={(e) => { e.stopPropagation(); nav("scheduling"); }}>Review</Btn>
-          </div>
-          {pendingBookings.slice(0, 3).map((r) => (
-            <div
-              key={r.id}
-              style={{
-                marginTop: 12,
-                paddingTop: 12,
-                borderTop: "1px solid #f0e6c8",
-                fontSize: 13,
-                color: "#555",
-              }}
-            >
-              <strong style={{ color: "#232323" }}>{r.title}</strong>
-              {" · "}
-              {formatTs(r.requestedStart)}
-            </div>
-          ))}
-          {pendingBookingCount > 3 && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#7f8c8d" }}>
-              +{pendingBookingCount - 3} more
-            </div>
-          )}
-        </Card>
+    <div className="daily-dashboard">
+      <header className="daily-heading">
+        <h1>Dashboard</h1>
+        <p>{displayDay(today)} · Pacific time</p>
+      </header>
+      {notice && (
+        <div className="queue-notice">
+          <span role="status">{notice.title} {notice.kind === "deferred" ? "deferred until tomorrow" : "dismissed"}.</span>
+          <button className="admin-quiet" ref={undoButton} onClick={() => restore(notice.key)}>Undo</button>
         </div>
       )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16, marginBottom: 24 }}>
-        {[
-          ["Revenue", `$${totalRevenue.toFixed(2)}`, "#d5f5e3", "#27ae60"],
-          ["Costs", `$${totalCost.toFixed(2)}`, "#fadbd8", "#c0392b"],
-          ["Profit", `$${totalProfit.toFixed(2)}`, totalProfit >= 0 ? "#d5f5e3" : "#fadbd8", totalProfit >= 0 ? "#27ae60" : "#c0392b"],
-          ["Customers", data.customers.length, "#d6eaf8", "#2980b9"],
-          ["Total Jobs", data.jobs.length, "#f2f3f4", "#232323"],
-        ].map(([l, v, bg, tc]) => (
-          <Card key={l} style={{ background: bg, textAlign: "center", border: "none" }}>
-            <div style={{ fontSize: 13, color: tc, fontWeight: 600, letterSpacing: "0.02em" }}>{l}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: tc }}>{v}</div>
-          </Card>
-        ))}
+      <div className="queue-grid">
+        {sections.map(([key, label, empty]) => {
+          const rows = queues[key].filter(row => !isHidden(row));
+          const content = rows.length ? <QueueRows rows={rows} queue={key} nav={nav} change={change} />
+            : <p className="queue-empty">{empty}</p>;
+          return key === "upcoming"
+            ? <details className="queue-panel" key={key}><summary>{label} <span>{rows.length}</span></summary>{content}</details>
+            : <section className={`queue-panel queue-panel--${key}`} key={key} aria-labelledby={`queue-${key}`}>
+              <h2 id={`queue-${key}`}>{label} <span>{rows.length}</span></h2>
+              {content}
+            </section>;
+        })}
       </div>
-      <Card>
-        <h3 style={{ marginTop: 0, color: "#232323" }}>Upcoming Jobs</h3>
-        {upcomingJobs.length === 0 ? (
-          <p style={{ color: "#7f8c8d" }}>No upcoming jobs.</p>
-        ) : (
-          upcomingJobs.map(j => {
-            const c = getCustomer(j.customerId);
-            const st = statusColor[j.status] || { bg: "#ecf0f1", tc: "#232323" };
-            return (
-              <div
-                key={j.id}
-                onClick={() => nav("job/:id", j.id)}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #bdc3c7", cursor: "pointer" }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{j.title}</div>
-                  <div style={{ fontSize: 12, color: "#7f8c8d" }}>{c?.name} · {j.date}</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{ fontWeight: 600 }}>${jobRevenue(j).toFixed(2)}</span>
-                  <Badge text={j.status} color={st.bg} textColor={st.tc} />
-                </div>
-              </div>
-            );
-          })
-        )}
-      </Card>
+      <details className="queue-panel queue-archive">
+        <summary>Historical backlog <span>{backlog.length}</span></summary>
+        <p className="queue-empty">Intake older than seven Pacific calendar days, recovered leads, and past booking requests.</p>
+        {backlog.length > 0 && <QueueRows rows={backlog} queue="backlog" nav={nav} change={change} />}
+      </details>
+      {hiddenRows.length > 0 && <details className="queue-panel queue-archive">
+        <summary>Deferred and dismissed <span>{hiddenRows.length}</span></summary>
+        <ul className="queue-rows">
+          {hiddenRows.map(row => <li className="queue-row" key={row.key}>
+            <div className="queue-info"><strong>{row.title}</strong><span className="queue-meta">
+              {hidden[row.key].kind === "dismissed" ? "Dismissed" : `Deferred until ${displayDay(hidden[row.key].until)}`}
+            </span></div>
+            <Btn onClick={() => restore(row.key)}>Restore</Btn>
+          </li>)}
+        </ul>
+      </details>}
     </div>
   );
 }

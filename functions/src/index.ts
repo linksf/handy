@@ -20,8 +20,32 @@ import {setGlobalOptions} from "firebase-functions";
 // In the v1 API, each function can only serve one request per container, so
 // this will be the maximum concurrent request count.
 setGlobalOptions({maxInstances: 10});
+export {telnyxWebhook, telnyxWebhookFallback, processTelnyxEvent} from "./telnyxWebhook";
 
 export {thumbtackWebhook} from "./thumbtackWebhook";
+export {connectThumbtack} from "./thumbtackOAuth";
+
 export {bookingRequestStatusNotifier} from "./bookingRequestNotifier";
 export {matchLeadInvite} from "./leadInvite";
 export {submitInquiry, linkInquiryToClient} from "./submitInquiry";
+export {
+  processThumbtackConversations,
+  emailDailyLeadBrief,
+} from "./leadAutomation";
+export {syncThumbtackContacts} from "./leadContacts";
+export {processLeadTelegram} from "./leadTelegram";
+export {approveLeadBooking} from "./leadWorkflow";
+export {correctJobPaymentDate, recordJobPayment, recordLeadCost, getFinancialReport, emailWeeklyFinancialReport, emailMonthlyFinancialReport} from "./leadFinance";
+export {researchJobEquipment} from "./equipmentResearch";
+export {reviewLeadCleanup, prepareLeadCleanup} from "./leadMigration";
+export {refreshLeadFeeExpense, refreshLeadFacts} from "./leadTriggers";
+
+export {draftThumbtackInitialResponse} from "./leadIntro";
+export {draftThumbtackInitialResponseOpenAI} from "./leadIntroOpenAI";
+export {emailThumbtackDraftComparison} from "./leadDraftEmail";
+
+export {syncAdminVisit} from "./adminVisit";
+
+export {draftAdminCapture} from "./adminCapture";
+
+export {getDevicePushConfig, registerDevicePush, removeDevicePush, pushNewLead, pushNewInquiry, pushNewBooking} from "./devicePush";

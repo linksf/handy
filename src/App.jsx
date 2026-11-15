@@ -1,31 +1,47 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { jobCostBreakdown as invoiceJobCosts, invoiceTotalFromLines, buildJobInvoiceLines } from "../shared/invoices.js";
+import { hourlyLaborTotal } from "@handy/shared/finance";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useMobile } from "./hooks/useMobile";
 import SignInScreen from "./components/SignInScreen";
-import NavIcon from "./components/ui/NavIcon";
+import AdminNavigation from "./components/AdminNavigation";
+import "./components/adminDaily.css";
+import IntakeInbox from "./components/IntakeInbox";
+import { intakeRows } from "./utils/intake";
+import { saveIntakeAction, saveIntakeJob } from "./utils/intakeStore";
 import Dashboard from "./components/Dashboard";
 import Customers from "./components/Customers";
+import {ensureTool} from "./utils/toolCatalogStore";
+import {normalizeToolName} from "./utils/toolNames";
+import GlobalSearch from "./components/GlobalSearch";
 import NewCustomer from "./components/NewCustomer";
 import CustomerDetail from "./components/CustomerDetail";
 import Jobs from "./components/Jobs";
 import NewJob from "./components/NewJob";
+import { drainCaptures } from "./utils/captureQueue";
+import { closeoutFor } from "./utils/closeout";
+import VisitEditor from "./components/VisitEditor";
 import JobDetail from "./components/JobDetail";
 import ToolsManager from "./components/ToolsManager";
 import TasksManager from "./components/TasksManager";
 import SchedulingManager from "./components/SchedulingManager";
 import CalendarAgenda from "./components/CalendarAgenda";
+import Leads from "./components/Leads";
+import FinancialReports from "./components/FinancialReports";
+import {httpsCallable} from "firebase/functions";
 import Inquiries from "./components/Inquiries";
-import NavBadge from "./components/ui/NavBadge";
+
 import { RECOMMENDED_TOOLS } from "./toolCatalog";
-import { ALLOWED_GOOGLE_EMAIL } from "./constants";
+import { ALLOWED_GOOGLE_EMAIL, APP_NAME } from "./constants";
 import { adminPathForView, parseAdminPath } from "./utils/adminRoutes";
+import { pacificDay } from "./utils/adminDates";
 import { availabilityOverlapsBooking, findConflictingBooking } from "./utils/bookingConflicts";
 import {
   deleteTaskCatalogEntry,
   jobTasksFromBookingRequestAsync,
   syncTaskCatalogEntry,
 } from "./utils/taskCatalog";
-import { db } from "./firebase";
+import { db, functions } from "./firebase";
 import { generateOpaqueCustomerId } from "@handy/shared";
 import {
   collection,
@@ -41,6 +57,7 @@ import {
   orderBy,
   serverTimestamp,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 
 function normalizePhoneDigits(s) {
@@ -52,7 +69,16 @@ export default function App() {
   const isMobile = useMobile();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
+  const searchInput = useRef(null);
+  const content = useRef(null);
+  const focusContent = useRef(false);
+  const [intake, setIntake] = useState({});
+  const [intakeError, setIntakeError] = useState(false);
+  const [intakeReady, setIntakeReady] = useState(false);
+  const [leads, setLeads] = useState([]);
+  const [leadReadError, setLeadReadError] = useState(false);
   const [customers, setCustomers] = useState([]);
+  const [archivedJobs, setArchivedJobs] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [tools, setTools] = useState([]);
   const [toolsLoaded, setToolsLoaded] = useState(false);
@@ -68,14 +94,16 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     return onSnapshot(collection(db, "customers"), (snap) => {
-      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.status !== "archived"));
     });
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
     return onSnapshot(collection(db, "jobs"), (snap) => {
-      setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const records = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      setJobs(records.filter(job => job.status !== "Archived"));
+      setArchivedJobs(records.filter(job => job.status === "Archived"));
     });
   }, [user]);
 
@@ -131,6 +159,37 @@ export default function App() {
     });
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    return onSnapshot(collection(db, "leads"), snap => {
+      setLeadReadError(false);
+      setLeads(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, error => {
+      console.error("Admin leads subscription", error);
+      setLeadReadError(true);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    return onSnapshot(collection(db, "adminIntake"), snap => {
+      setIntakeError(false);
+      setIntakeReady(true);
+      setIntake(Object.fromEntries(snap.docs.map(d => [d.id, d.data()])));
+    }, error => {
+      console.error("Admin intake subscription", error);
+      setIntakeError(true);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const sync = () => drainCaptures(user.uid).catch(error => console.warn("Capture sync queue", error));
+    void sync();
+    window.addEventListener("online", sync);
+    return () => window.removeEventListener("online", sync);
+  }, [user?.uid]);
+
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
@@ -147,17 +206,23 @@ export default function App() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [accountMenuOpen]);
 
-  const nav = (v, p = null) => {
-    setView(v);
-    setViewParam(p);
-    const path = adminPathForView(v, p);
-    if (window.location.pathname !== path) {
-      window.history.pushState({}, "", path);
+  const nav = (destination, param = null) => {
+    const path = adminPathForView(destination, param);
+    if (window.location.pathname === path) {
+      window.scrollTo(0, 0);
+      content.current?.focus();
+      return;
     }
+    window.history.pushState({}, "", path);
+    const parsed = parseAdminPath(path);
+    focusContent.current = true;
+    setView(parsed.view);
+    setViewParam(parsed.param);
   };
 
   useEffect(() => {
     const onPop = () => {
+      focusContent.current = true;
       const parsed = parseAdminPath(window.location.pathname);
       setView(parsed.view);
       setViewParam(parsed.param);
@@ -176,68 +241,24 @@ export default function App() {
     setViewParam(parsed.param);
   }, [user]);
 
+  useEffect(() => {
+    if (!focusContent.current) return;
+    focusContent.current = false;
+    window.scrollTo(0, 0);
+    content.current?.focus();
+  }, [view, viewParam]);
+
   // Derived
   const data = { customers, jobs };
   const getCustomer = (id) => customers.find(c => c.id === id);
-  const getJob = (id) => jobs.find(j => j.id === id);
+  const getJob = (id) => jobs.find(j => j.id === id) || archivedJobs.find(j => j.id === id);
   const jobsForCustomer = (cid) => jobs.filter(j => j.customerId === cid);
   const getTool = (id) => tools.find(t => t.id === id);
 
   // Cost breakdown — materials + expenses, split by reimbursable
-  const jobCostBreakdown = (job) => {
-    let reimbursable = 0, nonReimbursable = 0;
-    (job.tasks || []).forEach(t => {
-      (t.materials || []).forEach(m => {
-        const c = (parseFloat(m.cost) || 0) * (parseFloat(m.qty) || 1);
-        if (m.reimbursable) reimbursable += c;
-        else nonReimbursable += c;
-      });
-    });
-    (job.expenses || []).forEach(e => {
-      const amt = parseFloat(e.amount) || 0;
-      if (e.reimbursable) reimbursable += amt;
-      else nonReimbursable += amt;
-    });
-    return { reimbursable, nonReimbursable, total: reimbursable + nonReimbursable };
-  };
-  const jobCost = (job) => jobCostBreakdown(job).total;
-
-  // Revenue = flat rate + (hourly rate × hours)
-  const jobRevenue = (job) =>
-    (parseFloat(job.price) || 0) +
-    (parseFloat(job.hourlyRate) || 0) * (parseFloat(job.hours) || 0);
-
-  const upcomingJobs = useMemo(() =>
-    jobs
-      .filter(j => j.status === "Scheduled" || j.status === "In Progress")
-      .sort((a, b) => new Date(a.date) - new Date(b.date)),
-    [jobs]);
-
-  const totalRevenue = useMemo(() =>
-    jobs.filter(j => j.status === "Complete").reduce((s, j) => s + jobRevenue(j), 0),
-    [jobs]);
-
-  const totalCost = useMemo(() =>
-    jobs.filter(j => j.status === "Complete").reduce((s, j) => s + jobCost(j), 0),
-    [jobs]);
-
-  const pendingBookingCount = useMemo(
-    () => bookingRequests.filter((r) => r.status === "pending").length,
-    [bookingRequests]
-  );
-
-  const newInquiryCount = useMemo(
-    () => inquiries.filter((inquiry) => inquiry.status === "new").length,
-    [inquiries]
-  );
-
-  const pendingBookings = useMemo(
-    () =>
-      bookingRequests
-        .filter((r) => r.status === "pending")
-        .sort((a, b) => (a.requestedStart?.toMillis?.() || 0) - (b.requestedStart?.toMillis?.() || 0)),
-    [bookingRequests]
-  );
+  const jobCostBreakdown = invoiceJobCosts;
+  const jobCost = job => jobCostBreakdown(job).total;
+  const jobRevenue = job => invoiceTotalFromLines(buildJobInvoiceLines(job));
 
   const closeAvailabilityForRange = async (startMs, endMs) => {
     const toClose = availability.filter(
@@ -276,20 +297,35 @@ export default function App() {
   };
 
   // Job mutations
-  const addJob = async (j) => {
-    const { tasks: jobTasks, ...rest } = j;
-    await addDoc(collection(db, "jobs"), {
-      ...rest,
-      tasks: Array.isArray(jobTasks) ? jobTasks : [],
-      payStatus: "Unpaid",
-      amountPaid: 0,
-    });
-    showToast("Job created!");
-    nav("jobs");
-  };
   const updateJob = async (j) => {
     const { id, ...rest } = j;
-    await updateDoc(doc(db, "jobs", id), rest);
+    const ref = doc(db, "jobs", id);
+    const audited = ["customerId", "jobAddress", "siteContact", "payer", "estimate", "approvedPrice", "price", "date", "status", "expenses", "hourlyRate", "hours", "laborEntries", "tasks", "invoices", "invoiceItems", "invoiceOverrides", "closeout", "finalVisit", "archivedFromStatus"];
+    if (audited.some(field => field in rest)) {
+      await runTransaction(db, async transaction => {
+        const before = (await transaction.get(ref)).data();
+        if (!before) throw new Error("This job is no longer available.");
+        if (rest.status === "Archived") {
+          const { issues, openVisits } = closeoutFor(before);
+          if (openVisits.length || (issues.length && (!before.closeout?.reason ||
+            JSON.stringify(issues) !== JSON.stringify(before.closeout.issues)))) {
+            throw new Error("Review current closeout items before archiving.");
+          }
+        }
+        if (rest.finalVisit && closeoutFor(before).openVisits.length) throw new Error("Finish open visits first.");
+        if (rest.closeout) {
+          const { issues, openVisits } = closeoutFor(before);
+          if (openVisits.length || JSON.stringify(issues) !== JSON.stringify(rest.closeout.issues) ||
+            (issues.length && !rest.closeout.reason?.trim())) throw new Error("Closeout changed. Review the remaining items.");
+        }
+        const changes = audited.filter(field => field in rest && JSON.stringify(before[field]) !== JSON.stringify(rest[field]));
+        transaction.update(ref, rest);
+        if (changes.length) transaction.set(doc(ref, "adminHistory", crypto.randomUUID()), {
+          at: serverTimestamp(), previous: Object.fromEntries(changes.map(field => [field, before[field] ?? null])),
+          current: Object.fromEntries(changes.map(field => [field, rest[field] ?? null])),
+        });
+      });
+    } else await updateDoc(ref, rest);
     showToast("Job saved!");
   };
   const deleteJob = async (id) => {
@@ -298,38 +334,39 @@ export default function App() {
     nav("jobs");
   };
 
+  const deleteJobs = async (ids) => {
+    const deleted = [];
+    const uniqueIds = [...new Set(ids)];
+    for (let i = 0; i < uniqueIds.length; i += 400) {
+      const chunk = uniqueIds.slice(i, i + 400);
+      const batch = writeBatch(db);
+      chunk.forEach(id => batch.delete(doc(db, "jobs", id)));
+      try {
+        await batch.commit();
+        deleted.push(...chunk);
+      } catch {
+        return { deleted, failed: uniqueIds.slice(i) };
+      }
+    }
+    showToast(`${deleted.length} jobs deleted.`);
+    return { deleted, failed: [] };
+  };
+
   // Tool mutations
   const addTool = async (name) => {
-    await addDoc(collection(db, "tools"), { name, category: "" });
-    showToast("Tool added!");
-  };
-  const addToolWithCategory = async (name, category = "") => {
-    await addDoc(collection(db, "tools"), { name, category });
+    const result = await ensureTool(db, name);
+    showToast(result.created ? "Tool added!" : "That tool is already listed.");
   };
   const addToolsBulk = async (items, options = {}) => {
-    const { silent = false } = options;
-    const normalizedExisting = new Set(
-      tools.map((t) => (t.name || "").trim().toLowerCase()).filter(Boolean)
-    );
-    const uniqueIncoming = [];
-    const seenIncoming = new Set();
-    (items || []).forEach((item) => {
-      const name = (item?.name || "").trim();
-      if (!name) return;
-      const key = name.toLowerCase();
-      if (normalizedExisting.has(key) || seenIncoming.has(key)) return;
-      seenIncoming.add(key);
-      uniqueIncoming.push({ name, category: (item?.category || "").trim() });
-    });
-    if (uniqueIncoming.length === 0) {
-      if (!silent) showToast("No new tools to add.");
-      return 0;
+    const unique = new Map();
+    for (const item of items || []) {
+      const key = normalizeToolName(item?.name);
+      if (key && !unique.has(key)) unique.set(key, item);
     }
-    await Promise.all(uniqueIncoming.map((t) => addToolWithCategory(t.name, t.category)));
-    if (!silent) {
-      showToast(`Added ${uniqueIncoming.length} tool${uniqueIncoming.length === 1 ? "" : "s"}!`);
-    }
-    return uniqueIncoming.length;
+    const results = await Promise.all([...unique.values()].map(t => ensureTool(db, t.name, t.category)));
+    const added = results.filter(r => r.created).length;
+    if (!options.silent) showToast(added ? `Added ${added} tool${added === 1 ? "" : "s"}!` : "No new tools to add. Already listed.");
+    return added;
   };
   const updateTool = async (tool) => {
     const { id, ...rest } = tool;
@@ -404,6 +441,15 @@ export default function App() {
       showToast("Another booking overlaps this time. Decline or resolve it first.");
       return null;
     }
+    if (request.sourceThumbtackLeadId) {
+      try {
+        const result = await httpsCallable(functions, "approveLeadBooking")({requestId: request.id});
+        await closeAvailabilityForRange(reqStart, reqEnd);
+        showToast("Job scheduled. Calendar synchronization is queued.");
+        if (navigate) nav("job/:id", result.data.jobId);
+        return result.data.jobId;
+      } catch (e) { showToast(e.message || "Unable to approve booking."); return null; }
+    }
     const nPhone = normalizePhoneDigits(request.phone);
     let customerId = null;
     const draftJobId = (request.draftJobId || "").trim();
@@ -412,7 +458,7 @@ export default function App() {
     if (draftJob) {
       customerId = draftJob.customerId;
       const start = request.requestedStart?.toDate?.() || new Date();
-      const dateStr = start.toISOString().slice(0, 10);
+      const dateStr = pacificDay(start);
       const bookingTasks = await jobTasksFromBookingRequestAsync(db, request);
       const mergedNotes = [draftJob.notes, (request.notes || "").trim()]
         .filter(Boolean)
@@ -472,7 +518,7 @@ export default function App() {
       });
     }
     const start = request.requestedStart?.toDate?.() || new Date();
-    const dateStr = start.toISOString().slice(0, 10);
+    const dateStr = pacificDay(start);
     const bookingTasks = await jobTasksFromBookingRequestAsync(db, request);
     const jobRef = await addDoc(collection(db, "jobs"), {
       title: (request.title || "").trim() || "Booking",
@@ -523,51 +569,51 @@ export default function App() {
 
   const pages = {
     dashboard: Dashboard,
+    inbox: IntakeInbox,
+    "intake/:id": IntakeInbox,
+    leadRecord: Leads,
+    inquiryRecord: Inquiries,
     customers: Customers,
     jobs: Jobs,
     newCustomer: NewCustomer,
     newJob: NewJob,
     "customer/:id": CustomerDetail,
     "job/:id": JobDetail,
+    jobInvoice: JobDetail,
+    jobSection: JobDetail,
+    visitEditor: VisitEditor,
     tools: ToolsManager,
     tasks: TasksManager,
     scheduling: SchedulingManager,
     calendar: CalendarAgenda,
     inquiries: Inquiries,
+    "inquiry/:id": IntakeInbox,
+    "booking/:id": SchedulingManager,
+    leads: Leads,
+    "lead/:id": IntakeInbox,
+    reports: FinancialReports,
   };
   const Page = pages[view] || Dashboard;
 
+  const sourceParam = view === "lead/:id" ? `lead:${viewParam}` : view === "inquiry/:id" ? `inquiry:${viewParam}` : viewParam;
   const ctx = {
-    data, nav, viewParam,
+    intake, intakeReady, archivedJobs, captureOwner: user?.uid,
+    intakeRows: intakeRows({ leads, inquiries, jobs, customers, intake }),
+    applyIntake: (...args) => saveIntakeAction(db, ...args),
+    saveQuickJob: values => saveIntakeJob(db, values),
+    data, nav, viewParam: sourceParam, view, leads,
     getCustomer, getJob, jobsForCustomer, jobCost, jobCostBreakdown, jobRevenue, getTool,
     addCustomer, updateCustomer, deleteCustomer,
-    addJob, updateJob, deleteJob,
+    updateJob, deleteJob, deleteJobs,
     tools, taskDefs,
     addTool, addToolsBulk, updateTool, deleteTool,
     addTaskDef, updateTaskDef, deleteTaskDef,
-    upcomingJobs, totalRevenue, totalCost,
-    availability, bookingRequests,
-    customers,
-    pendingBookingCount,
-    pendingBookings,
-    inquiries,
-    newInquiryCount,
+    availability, bookingRequests, customers, inquiries,
     markInquiryReviewed,
     createJobFromBookingRequest,
     approveBookingRequest,
     showToast,
   };
-
-  const navItems = [
-    ["dashboard", "Dashboard"],
-    ["calendar", "Calendar"],
-    ["customers", "Customers"],
-    ["jobs", "Jobs"],
-    ["inquiries", "Inquiries"],
-    ["tasks", "Tasks"],
-    ["tools", "Tools"],
-    ["scheduling", "Schedule"],
-  ];
 
   if (authLoading) {
     return (
@@ -599,41 +645,6 @@ export default function App() {
     );
   }
 
-  const navIconButtons = (
-    <>
-      {navItems.map(([v, l]) => {
-        const active = view === v;
-        const badge =
-          v === "scheduling" ? pendingBookingCount :
-          v === "inquiries" ? newInquiryCount : 0;
-        return (
-          <button
-            key={v}
-            title={l}
-            aria-label={badge ? `${l} (${badge} pending)` : l}
-            type="button"
-            onClick={() => nav(v)}
-            style={{
-              background: active ? "#f9bf3b" : "transparent",
-              border: "none",
-              padding: isMobile ? "12px 14px" : "12px 14px",
-              cursor: "pointer",
-              borderRadius: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              position: "relative",
-            }}
-          >
-            <NavIcon name={v} color={active ? "#232323" : "#ecf0f1"} />
-            <NavBadge count={badge} />
-          </button>
-        );
-      })}
-    </>
-  );
-
   const accountMenuDropdown = accountMenuOpen && (
     <div
       style={{
@@ -658,6 +669,11 @@ export default function App() {
           <div style={{ fontSize: 12, color: "#555", marginTop: 6, wordBreak: "break-all" }}>{user.email}</div>
         )}
       </div>
+      <button type="button" className="admin-quiet" onClick={() => {
+        setAccountMenuOpen(false);
+        const settings = document.getElementById("handy-device-settings");
+        if (settings) { settings.open = true; settings.scrollIntoView({ block: "start" }); settings.querySelector("summary")?.focus(); }
+      }}>Install and device settings</button>
       <button
         type="button"
         onClick={() => {
@@ -682,7 +698,7 @@ export default function App() {
     </div>
   );
 
-  const hamburgerButton = (
+  const accountButton = (
     <button
       type="button"
       aria-label={accountMenuOpen ? "Close account menu" : "Open account menu"}
@@ -699,121 +715,44 @@ export default function App() {
         justifyContent: "center",
         alignItems: "center",
         gap: 5,
-        width: 44,
+        padding: "0 12px",
+        fontWeight: 700,
         height: 44,
         flexShrink: 0,
         boxSizing: "border-box",
       }}
     >
-      <span style={{ display: "block", width: 20, height: 3, background: "#232323", borderRadius: 1 }} />
-      <span style={{ display: "block", width: 20, height: 3, background: "#232323", borderRadius: 1 }} />
-      <span style={{ display: "block", width: 20, height: 3, background: "#232323", borderRadius: 1 }} />
+      Account
     </button>
   );
 
   return (
-    <div style={{ fontFamily: "'Futura', 'Trebuchet MS', 'Century Gothic', sans-serif", minHeight: "100vh", background: "#ecf0f1", color: "#232323" }}>
-      <nav
-        style={{
-          background: "#232323",
-          color: "#ecf0f1",
-          padding: isMobile ? "10px 12px" : "0 12px",
-          display: "flex",
-          flexDirection: isMobile ? "column" : "row",
-          alignItems: isMobile ? "stretch" : "center",
-          gap: isMobile ? 10 : 8,
-          flexWrap: "nowrap",
-        }}
-      >
-        {isMobile ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", width: "100%", gap: 10, minHeight: 44 }}>
-              <span
-                style={{
-                  fontWeight: 700,
-                  fontSize: 16,
-                  cursor: "pointer",
-                  padding: "6px 0",
-                  color: "#ecf0f1",
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                onClick={() => nav("dashboard")}
-              >
-                Handy
-              </span>
-              <div ref={accountMenuRef} style={{ position: "relative", flexShrink: 0 }}>
-                {hamburgerButton}
-                {accountMenuDropdown}
-              </div>
-            </div>
-            <div
-              className="nav-scroll"
-              style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-evenly",
-                overflowX: "auto",
-                overflowY: "hidden",
-                width: "100%",
-                WebkitOverflowScrolling: "touch",
-                borderTop: "1px solid rgba(255,255,255,0.2)",
-                paddingTop: 8,
-                marginTop: 2,
-                gap: 0,
-              }}
-            >
-              {navIconButtons}
-            </div>
-          </>
-        ) : (
-          <>
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: 17,
-                marginRight: 8,
-                cursor: "pointer",
-                padding: "14px 8px",
-                whiteSpace: "nowrap",
-                color: "#ecf0f1",
-                flexShrink: 0,
-              }}
-              onClick={() => nav("dashboard")}
-            >
-              Handy
-            </span>
-            <div
-              className="nav-scroll"
-              style={{
-                display: "flex",
-                flex: 1,
-                minWidth: 0,
-                alignItems: "center",
-                justifyContent: "space-evenly",
-                overflowX: "auto",
-                overflowY: "hidden",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {navIconButtons}
-            </div>
-            <div ref={accountMenuRef} style={{ flexShrink: 0, position: "relative", padding: "8px 0" }}>
-              {hamburgerButton}
-              {accountMenuDropdown}
-            </div>
-          </>
-        )}
-      </nav>
+    <div className="handy-admin" style={{ fontFamily: "'Futura', 'Trebuchet MS', 'Century Gothic', sans-serif", minHeight: "100vh", background: "#ecf0f1", color: "#232323" }}>
+      <header className="admin-header">
+        <div className="admin-header-inner">
+          <a className="admin-brand" href="/admin/dashboard" onClick={event => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault();
+            nav("dashboard");
+          }}>{APP_NAME}</a>
+          <AdminNavigation view={view} nav={nav} focusSearch={() => searchInput.current?.focus()} />
+          <div ref={accountMenuRef} className="admin-account">
+            {accountButton}
+            {accountMenuDropdown}
+          </div>
+        </div>
+      </header>
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: isMobile ? "16px 12px" : "24px 16px" }}>
-        <Page ctx={ctx} />
+        <GlobalSearch customers={customers} jobs={jobs} leads={leads} inquiries={inquiries} nav={nav}
+          locationKey={window.location.pathname} inputRef={searchInput} />
+        <main ref={content} tabIndex={-1} aria-label="Page content">
+          {intakeError && <p role="alert">Inbox changes could not be loaded. Reload to retry.</p>}
+          {leadReadError && <p role="alert">Leads could not be refreshed. Reload to retry.</p>}
+          <Page key={window.location.pathname} ctx={ctx} />
+        </main>
       </div>
       {toast && (
-        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "#232323", color: "#ecf0f1", padding: "10px 24px", borderRadius: 8, fontSize: 14, zIndex: 999, whiteSpace: "nowrap" }}>
+        <div role="status" style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "#232323", color: "#ecf0f1", padding: "10px 24px", borderRadius: 8, fontSize: 14, zIndex: 999, whiteSpace: "nowrap" }}>
           {toast}
         </div>
       )}

@@ -28,7 +28,7 @@ export default function JobStatusSelect({ job, updateJob }) {
     setError("");
     setSaving(true);
     try {
-      await updateJob({ ...job, status: nextStatus });
+      await updateJob({ id: job.id, status: nextStatus });
     } catch {
       setSelected(latestPersistedStatus.current);
       setError("Could not update job status. Try again.");

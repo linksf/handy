@@ -27,7 +27,7 @@ describe("JobStatusSelect", () => {
     });
 
     await waitFor(() => {
-      expect(updateJob).toHaveBeenCalledWith({ ...job, status: "Scheduled" });
+      expect(updateJob).toHaveBeenCalledWith({ id: job.id, status: "Scheduled" });
     });
   });
 
@@ -42,7 +42,7 @@ describe("JobStatusSelect", () => {
     fireEvent.change(select, { target: { value: "Draft" } });
 
     await waitFor(() => {
-      expect(updateJob).toHaveBeenLastCalledWith({ ...job, status: "Draft" });
+      expect(updateJob).toHaveBeenLastCalledWith({ id: job.id, status: "Draft" });
     });
     expect(updateJob).toHaveBeenCalledTimes(2);
   });
@@ -54,7 +54,7 @@ describe("JobStatusSelect", () => {
 
     rerender(
       <JobStatusSelect
-        job={{ ...job, status: "Scheduled" }}
+        job={{ id: job.id, status: "Scheduled" }}
         updateJob={vi.fn()}
       />
     );
@@ -125,7 +125,7 @@ describe("JobStatusSelect", () => {
 
     rerender(
       <JobStatusSelect
-        job={{ ...job, status: "Scheduled" }}
+        job={{ id: job.id, status: "Scheduled" }}
         updateJob={updateJob}
       />
     );
@@ -155,7 +155,7 @@ describe("JobStatusSelect", () => {
 
     rerender(
       <JobStatusSelect
-        job={{ ...job, status: "Scheduled" }}
+        job={{ id: job.id, status: "Scheduled" }}
         updateJob={updateJob}
       />
     );

@@ -9,7 +9,7 @@ export async function isOwnerFirebaseUser(user) {
   const email = getGoogleEmailFromUser(user);
   if (email && isEmailAllowlisted(email, ALLOWED_GOOGLE_EMAIL)) return true;
   try {
-    const { claims } = await user.getIdTokenResult(true);
+    const { claims } = await user.getIdTokenResult(typeof navigator === "undefined" || navigator.onLine);
     return claims.role === "owner";
   } catch {
     return false;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { APP_NAME } from "../constants";
 
 export default function SignInScreen({ onSignIn, notice, blockedFirebaseUser, onSignOut }) {
   const [busy, setBusy] = useState(false);
@@ -46,7 +47,7 @@ export default function SignInScreen({ onSignIn, notice, blockedFirebaseUser, on
         }}
       >
         <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700, color: "#232323" }}>
-          Handy — Admin
+          {APP_NAME} — Admin
         </h1>
         <p style={{ margin: "0 0 28px", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
           Sign in with Google to continue. Your session stays on this device until you sign out. Clients request visits on the{" "}
