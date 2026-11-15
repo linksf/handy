@@ -5,7 +5,7 @@ import {GoogleAuth} from "google-auth-library";
 import {isOwnerAuth} from "./ownerAuth";
 import {requestJson} from "./leadAutomationGoogle";
 
-const model = defineString("ADMIN_CAPTURE_MODEL", {default: "gemini-2.5-flash"});
+const model = defineString("ADMIN_CAPTURE_MODEL", {default: "gemini-3.5-flash"});
 const schema = {
   receipt: {merchant: {type: "STRING"}, date: {type: "STRING"}, total: {type: "STRING"}, review: {type: "STRING"}},
   voice: {transcript: {type: "STRING"}, proposedNote: {type: "STRING"}, review: {type: "STRING"}},
